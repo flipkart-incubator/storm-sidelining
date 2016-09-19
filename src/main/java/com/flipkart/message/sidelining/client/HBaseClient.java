@@ -1,0 +1,313 @@
+package com.flipkart.message.sidelining.client;
+
+/**
+ * Created by saurabh.jha on 18/09/16.
+ */
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.HTableInterface;
+import org.apache.hadoop.hbase.client.HTablePool;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Row;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.util.Bytes;
+
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
+public class HBaseClient {
+
+    private final Configuration config;
+    private final HTablePool tablePool;
+
+    private Map<String,List<Row>> batchMutation;
+    private final int batchSize = 50;
+
+    //	public HBaseClient(){
+//		this.config = null;
+//		this.tablePool = null;
+//	}
+    public HBaseClient(Configuration config, int poolSize) throws HBaseClientException {
+        this.config = config;
+        this.tablePool = new HTablePool(this.config, poolSize);
+        batchMutation = Maps.newHashMap();
+    }
+
+    public HTablePool getTablePool() {
+        return tablePool;
+    }
+
+    public void putColumn(String tableName, String row, String cf, String col, byte[] value) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+
+            Put p = new Put(Bytes.toBytes(row));
+            p.add(Bytes.toBytes(cf), Bytes.toBytes(col), value);
+            table.put(p);
+        } catch (IOException e) {
+            String msg = "While inserting [" + row + ": " + cf + ": " + col + "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public void putColumns(String tableName, String row, String cf, Map<String, byte[]> columns) throws HBaseClientException {
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Put p = new Put(Bytes.toBytes(row));
+            byte[] cfBytes = Bytes.toBytes(cf);
+            for (Map.Entry<String, byte[]> column : columns.entrySet()) {
+                p.add(cfBytes, Bytes.toBytes(column.getKey()), column.getValue());
+            }
+            table.put(p);
+        } catch (IOException e) {
+            String msg = "While inserting columns into [" + row + ": " + cf +  "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    //used in migration-app
+    public void mutateColumns(String tableName, String row, String cf, Map<String, byte[]> columns, boolean isDelete) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            if(isDelete){
+                Delete delete = new Delete(Bytes.toBytes(row));
+                delete.deleteFamily(Bytes.toBytes(cf));
+                table.delete(delete);
+            } else {
+                Put p = new Put(Bytes.toBytes(row));
+                byte[] cfBytes = Bytes.toBytes(cf);
+                for (Map.Entry<String, byte[]> column : columns.entrySet()) {
+                    p.add(cfBytes, Bytes.toBytes(column.getKey()), column.getValue());
+                }
+                table.put(p);
+            }
+        } catch (IOException e) {
+            String msg = "While mutate columns  ";
+            throw new HBaseClientException(msg, e);
+
+        }
+    }
+
+    //used in clean migration
+    public void mutateColumnsBatch(String tableName, String row,String cf, Map<String, byte[]>columsnMap, boolean isDelete) throws HBaseClientException {
+        if(!batchMutation.containsKey(tableName)) batchMutation.put(tableName, Lists.newArrayList());
+        if(isDelete){
+            Delete delete = new Delete(Bytes.toBytes(row));
+            delete.deleteFamily(Bytes.toBytes(cf));
+            batchMutation.get(tableName).add(delete);
+        } else {
+            Put p = new Put(Bytes.toBytes(row));
+            byte[] cfBytes = Bytes.toBytes(cf);
+            for (Map.Entry<String, byte[]> column : columsnMap.entrySet()) {
+                p.add(cfBytes, Bytes.toBytes(column.getKey()), column.getValue());
+            }
+            batchMutation.get(tableName).add(p);
+        }
+        if(batchMutation.get(tableName).size() >= batchSize) {
+            flushMutations(tableName);
+        }
+    }
+
+    public boolean checkAndPutColumn(String tableName, String row, String cf, String col, byte[] value, String checkColumn, byte[] checkValue)
+            throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Put p = new Put(Bytes.toBytes(row));
+            p.add(Bytes.toBytes(cf), Bytes.toBytes(col), value);
+            return table.checkAndPut(Bytes.toBytes(row), Bytes.toBytes(cf), Bytes.toBytes(checkColumn), checkValue, p);
+        } catch (IOException e) {
+            String msg = "While check and inserting [" + row + ": " + cf + ": " + col + "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public boolean checkAndPutColumns(String tableName, String row, String cf, Map<String, byte[]> columns, String checkColumn, byte[] checkValue)
+            throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Put p = new Put(Bytes.toBytes(row));
+            for (Map.Entry<String, byte[]> column : columns.entrySet()) {
+                p.add(Bytes.toBytes(cf), Bytes.toBytes(column.getKey()), column.getValue());
+            }
+            return table.checkAndPut(Bytes.toBytes(row), Bytes.toBytes(cf), Bytes.toBytes(checkColumn), checkValue, p);
+        } catch (IOException e) {
+            String msg = "While check and inserting columns into [" + row + ": " + cf +  "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public Result[] getRows(String tableName, List<String> rows, String cf) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            List<Get> gets = new ArrayList<>();
+            for (String row : rows) {
+                Get get = new Get(Bytes.toBytes(row));
+                get.addFamily(Bytes.toBytes(cf));
+                gets.add(get);
+            }
+            Result[] results = table.get(gets);
+            return results;
+        } catch (IOException e) {
+            String msg = "While reading [" + rows.toString() + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public Result getRow(String tableName, String row, String cf) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Get get = new Get(Bytes.toBytes(row));
+            get.addFamily(Bytes.toBytes(cf));
+            Result result = table.get(get);
+            return result;
+        } catch (IOException e) {
+            String msg = "While reading [" + row + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public Result getRow(String tableName, String row) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Get get = new Get(Bytes.toBytes(row));
+            Result result = table.get(get);
+            return result;
+        } catch (IOException e) {
+            String msg = "While reading [" + row + "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    //TODO Improve the interface
+    public Result[] scan(String tableName, String row, String stopRow, Filter filter, String cf) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan;
+            if(row != null && stopRow == null){
+                scan = new Scan(row.getBytes());
+            }else if(row != null && stopRow != null){
+                scan = new Scan(row.getBytes(), stopRow.getBytes());
+            }else{
+                scan = new Scan();
+            }
+            scan.addFamily(cf.getBytes());
+            if(filter != null){
+                scan.setFilter(filter);
+            }
+            ResultScanner resultScanner = table.getScanner(scan);
+            ArrayList<Result> resultSets = Lists.newArrayList();
+            for(Result r : resultScanner) {
+                resultSets.add(r);
+            }
+            return resultSets.toArray(new Result[resultSets.size()]);
+        } catch (IOException e) {
+            String msg = "While reading [" + row + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public List<Result> scanRows(String tableName, String row, String stopRow, String cf, List<String> qualifiers) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan(row.getBytes(), stopRow.getBytes());
+            if ( qualifiers != null && qualifiers.size() > 0 ) {
+                for ( String qualifier : qualifiers ) scan.addColumn(cf.getBytes(), qualifier.getBytes());
+            }
+            ResultScanner resultScanner = table.getScanner(scan);
+
+            ArrayList<Result> resultSets = Lists.newArrayList();
+            for(Result r : resultScanner) {
+                //                r.get
+                resultSets.add(r);
+            }
+            return resultSets;
+        } catch (IOException e) {
+            String msg = "While reading [" + row + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+
+    public Result getColumnsForRow(String tableName, String row, String cf, List<String> columns) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Get get = new Get(Bytes.toBytes(row));
+            for (String column : columns) {
+                get.addColumn(Bytes.toBytes(cf), Bytes.toBytes(column));
+            }
+            Result result = table.get(get);
+            return result;
+        } catch (IOException e) {
+            String msg = "While reading [" + row + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public byte[] getColumnForRow(String tableName, String row, String cf, String column) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Get get = new Get(Bytes.toBytes(row));
+            get.addColumn(Bytes.toBytes(cf), Bytes.toBytes(column));
+            Result result = table.get(get);
+            return result.getValue(Bytes.toBytes(cf), Bytes.toBytes(column));
+        } catch (IOException e) {
+            String msg = "While reading [" + row + ": " + cf +"]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public void clearRow(String tableName, String row) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Delete delete = new Delete(Bytes.toBytes(row));
+            table.delete(delete);
+        } catch (IOException e) {
+            String msg = "While deleting [" + row + "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public void createTable(HTableDescriptor descriptor) throws HBaseClientException {
+        try (HBaseAdmin admin = new HBaseAdmin(config)) {
+            admin.createTable(descriptor);
+        } catch (IOException e) {
+            throw new HBaseClientException(e);
+        }
+    }
+
+    public void modifyTable(String tableName, HTableDescriptor descriptor) throws HBaseClientException {
+        try (HBaseAdmin admin = new HBaseAdmin(config)) {
+            admin.disableTable(tableName);
+            admin.modifyTable(Bytes.toBytes(tableName), descriptor);
+            admin.enableTable(tableName);
+        } catch (IOException e) {
+            throw new HBaseClientException(e);
+        }
+    }
+
+    public void flushAllMutations() throws HBaseClientException{
+        for(String tableName : batchMutation.keySet()){
+            flushMutations(tableName);
+        }
+    }
+
+    public void flushMutations(String tableName) throws HBaseClientException{
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            if(batchMutation.get(tableName).size() > 0) {
+                List<Row> deletes = batchMutation.get(tableName).stream().filter(row -> row instanceof Delete).collect(Collectors.toList());
+                List<Row> puts = batchMutation.get(tableName).stream().filter(row -> row instanceof Put).collect(Collectors.toList());
+                table.batch(deletes); //batch delete first then put
+                table.batch(puts);
+                batchMutation.get(tableName).clear();
+            }
+        } catch (IOException e) {
+            String msg = "While flushing columns  ";
+            throw new HBaseClientException(msg, e);
+
+        } catch (InterruptedException e) {
+            String msg = "While flushing columns ";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+}
+
