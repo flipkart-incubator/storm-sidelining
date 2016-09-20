@@ -10,13 +10,6 @@ import java.sql.Timestamp;
  */
 @Data
 public class Message {
-
-    public static final String TABLE_NAME = "oms.messages";
-    //column family names
-    public static final String COL_FAMILY_ATTRIBUTES = "attributes";
-    public static final String COL_FAMILY_DATA = "data";
-    public static final String COL_FAMILY_INFO = "info";
-
     String id;
     String groupId;
     String topic;

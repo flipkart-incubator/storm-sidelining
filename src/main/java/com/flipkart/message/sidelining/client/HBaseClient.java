@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -20,30 +19,23 @@ import org.apache.hadoop.hbase.client.HTablePool;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Row;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 
 public class HBaseClient {
 
-    private final Configuration config;
-    private final HTablePool tablePool;
+    private HTablePool tablePool;
+    private Configuration config;
 
-    private Map<String,List<Row>> batchMutation;
-    private final int batchSize = 50;
+    public HBaseClient(HTablePool tablePool) throws HBaseClientException {
+        this.tablePool = tablePool;
+    }
 
-    //	public HBaseClient(){
-//		this.config = null;
-//		this.tablePool = null;
-//	}
-    public HBaseClient(Configuration config, int poolSize) throws HBaseClientException {
+    public HBaseClient(Configuration config){
         this.config = config;
-        this.tablePool = new HTablePool(this.config, poolSize);
-        batchMutation = Maps.newHashMap();
     }
 
     public HTablePool getTablePool() {
@@ -76,6 +68,33 @@ public class HBaseClient {
         }
     }
 
+    public void deleteColumns(String tableName, String row, String cf) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Delete delete = new Delete(Bytes.toBytes(row));
+            delete.deleteFamily(Bytes.toBytes(cf));
+            table.delete(delete);
+        } catch (IOException e) {
+            String msg = "While mutate columns  ";
+            throw new HBaseClientException(msg, e);
+
+        }
+    }
+
+    public void updateColumn(String tableName, String row, String cf, String col, byte [] val) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            // Instantiating Put class
+            //accepts a row name
+            Put p = new Put(Bytes.toBytes(row));
+            // Updating a cell value
+            p.add(Bytes.toBytes(cf), Bytes.toBytes(col), val);
+            table.put(p);
+        } catch (IOException e) {
+            String msg = "While mutate columns  ";
+            throw new HBaseClientException(msg, e);
+
+        }
+    }
+
     //used in migration-app
     public void mutateColumns(String tableName, String row, String cf, Map<String, byte[]> columns, boolean isDelete) throws HBaseClientException {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
@@ -95,26 +114,6 @@ public class HBaseClient {
             String msg = "While mutate columns  ";
             throw new HBaseClientException(msg, e);
 
-        }
-    }
-
-    //used in clean migration
-    public void mutateColumnsBatch(String tableName, String row,String cf, Map<String, byte[]>columsnMap, boolean isDelete) throws HBaseClientException {
-        if(!batchMutation.containsKey(tableName)) batchMutation.put(tableName, Lists.newArrayList());
-        if(isDelete){
-            Delete delete = new Delete(Bytes.toBytes(row));
-            delete.deleteFamily(Bytes.toBytes(cf));
-            batchMutation.get(tableName).add(delete);
-        } else {
-            Put p = new Put(Bytes.toBytes(row));
-            byte[] cfBytes = Bytes.toBytes(cf);
-            for (Map.Entry<String, byte[]> column : columsnMap.entrySet()) {
-                p.add(cfBytes, Bytes.toBytes(column.getKey()), column.getValue());
-            }
-            batchMutation.get(tableName).add(p);
-        }
-        if(batchMutation.get(tableName).size() >= batchSize) {
-            flushMutations(tableName);
         }
     }
 
@@ -282,31 +281,6 @@ public class HBaseClient {
             admin.enableTable(tableName);
         } catch (IOException e) {
             throw new HBaseClientException(e);
-        }
-    }
-
-    public void flushAllMutations() throws HBaseClientException{
-        for(String tableName : batchMutation.keySet()){
-            flushMutations(tableName);
-        }
-    }
-
-    public void flushMutations(String tableName) throws HBaseClientException{
-        try ( HTableInterface table = tablePool.getTable(tableName)) {
-            if(batchMutation.get(tableName).size() > 0) {
-                List<Row> deletes = batchMutation.get(tableName).stream().filter(row -> row instanceof Delete).collect(Collectors.toList());
-                List<Row> puts = batchMutation.get(tableName).stream().filter(row -> row instanceof Put).collect(Collectors.toList());
-                table.batch(deletes); //batch delete first then put
-                table.batch(puts);
-                batchMutation.get(tableName).clear();
-            }
-        } catch (IOException e) {
-            String msg = "While flushing columns  ";
-            throw new HBaseClientException(msg, e);
-
-        } catch (InterruptedException e) {
-            String msg = "While flushing columns ";
-            throw new HBaseClientException(msg, e);
         }
     }
 }
