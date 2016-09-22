@@ -30,7 +30,7 @@ public class HBaseClient {
     private HTablePool tablePool;
     private Configuration config;
 
-    public HBaseClient(HTablePool tablePool) throws HBaseClientException {
+    public HBaseClient(HTablePool tablePool) {
         this.tablePool = tablePool;
     }
 

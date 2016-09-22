@@ -25,7 +25,7 @@ public class MessageService {
     HBaseClient client;
     HBaseDAO hBaseDAO;
 
-    public MessageService(HTablePool tablePool) throws HBaseClientException {
+    public MessageService(HTablePool tablePool) {
         this.client = new HBaseClient(tablePool);
         hBaseDAO = new HBaseDAO();
     }
@@ -104,19 +104,4 @@ public class MessageService {
         }
     }
 
-
-    private void initialise() throws HBaseClientException {
-
-        log.info("initializing HBase client");
-
-        Configuration config = HBaseConfiguration.create();
-        config.set(HConstants.ZOOKEEPER_QUORUM, HBaseClientConfig.zookeeperQuorum);
-        config.set(HConstants.ZOOKEEPER_CLIENT_PORT, HBaseClientConfig.port.toString());
-        config.set(HConstants.ZK_SESSION_TIMEOUT, Integer.toString(60000));
-        config.set("zookeeper.recovery.retry", Integer.toString(3));
-        config.set(HConstants.HBASE_CLIENT_RETRIES_NUMBER, Integer.toString(3));
-        config.set(HConstants.HBASE_RPC_TIMEOUT_KEY, Integer.toString(5000));
-
-        this.client = new HBaseClient(config);
-    }
 }
