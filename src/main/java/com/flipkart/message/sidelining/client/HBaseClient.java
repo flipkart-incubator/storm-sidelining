@@ -21,6 +21,7 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import com.google.common.collect.Lists;
@@ -68,13 +69,16 @@ public class HBaseClient {
         }
     }
 
-    public void deleteColumns(String tableName, String row, String cf) throws HBaseClientException {
+    public void deleteColumns(String tableName, String row, String cf, List<String> columnIds) throws HBaseClientException {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
             Delete delete = new Delete(Bytes.toBytes(row));
-            delete.deleteFamily(Bytes.toBytes(cf));
+            byte[] cfBytes = Bytes.toBytes(cf);
+            for (String id : columnIds){
+                delete.deleteColumns(cfBytes, Bytes.toBytes(id));
+            }
             table.delete(delete);
         } catch (IOException e) {
-            String msg = "While mutate columns  ";
+            String msg = "While deleting columns  ";
             throw new HBaseClientException(msg, e);
 
         }
@@ -88,28 +92,6 @@ public class HBaseClient {
             // Updating a cell value
             p.add(Bytes.toBytes(cf), Bytes.toBytes(col), val);
             table.put(p);
-        } catch (IOException e) {
-            String msg = "While mutate columns  ";
-            throw new HBaseClientException(msg, e);
-
-        }
-    }
-
-    //used in migration-app
-    public void mutateColumns(String tableName, String row, String cf, Map<String, byte[]> columns, boolean isDelete) throws HBaseClientException {
-        try ( HTableInterface table = tablePool.getTable(tableName)) {
-            if(isDelete){
-                Delete delete = new Delete(Bytes.toBytes(row));
-                delete.deleteFamily(Bytes.toBytes(cf));
-                table.delete(delete);
-            } else {
-                Put p = new Put(Bytes.toBytes(row));
-                byte[] cfBytes = Bytes.toBytes(cf);
-                for (Map.Entry<String, byte[]> column : columns.entrySet()) {
-                    p.add(cfBytes, Bytes.toBytes(column.getKey()), column.getValue());
-                }
-                table.put(p);
-            }
         } catch (IOException e) {
             String msg = "While mutate columns  ";
             throw new HBaseClientException(msg, e);
@@ -213,7 +195,8 @@ public class HBaseClient {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
             Scan scan = new Scan(row.getBytes(), stopRow.getBytes());
             if ( qualifiers != null && qualifiers.size() > 0 ) {
-                for ( String qualifier : qualifiers ) scan.addColumn(cf.getBytes(), qualifier.getBytes());
+                for ( String qualifier : qualifiers )
+                    scan.addColumn(cf.getBytes(), qualifier.getBytes());
             }
             ResultScanner resultScanner = table.getScanner(scan);
 
@@ -227,6 +210,24 @@ public class HBaseClient {
             String msg = "While reading [" + row + ": " + cf +"]";
             throw new HBaseClientException(msg, e);
         }
+    }
+
+    public List<Result> scanPrefix(String tableName, String prefix) throws HBaseClientException {
+        try ( HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan(Bytes.toBytes(prefix));
+            PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
+            scan.setFilter(prefixFilter);
+            ResultScanner resultScanner = table.getScanner(scan);
+            ArrayList<Result> resultSets = Lists.newArrayList();
+            for(Result r : resultScanner) {
+                resultSets.add(r);
+            }
+            return resultSets;
+        } catch (IOException e) {
+            String msg = "While searching for prefix " + prefix;
+            throw new HBaseClientException(msg, e);
+        }
+
     }
 
 

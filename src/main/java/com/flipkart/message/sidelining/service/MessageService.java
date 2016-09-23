@@ -55,15 +55,16 @@ public class MessageService {
         return true;
     }
 
-    public Map<String, byte[]> replay(String topic, String groupId) throws HBaseClientException {
+    public Map<String, byte[]> fetchData(String topic, String groupId) throws HBaseClientException {
         Map<String, byte[]> map = new HashMap<>();
         Result result = hBaseDAO.get(client, topic, groupId);
         NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
+        if (navigableMap == null || navigableMap.size() == 0)
+            return map;
         for (byte[] bytes : navigableMap.keySet()){
             String key = Bytes.toString(bytes);
             map.put(key, navigableMap.get(bytes));
         }
-        hBaseDAO.deleteRow(client, topic, groupId);
         return map;
     }
 
@@ -104,4 +105,30 @@ public class MessageService {
         }
     }
 
+    public boolean replay(String topic, String groupId, List<String> ids){
+        try {
+            hBaseDAO.deleteColumns(client, topic, groupId, ids);
+            Result result = hBaseDAO.get(client, topic, groupId);
+            NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
+            if (navigableMap == null || navigableMap.size() <= 0)
+                hBaseDAO.deleteRow(client, topic, groupId);
+            return true;
+        } catch (HBaseClientException e) {
+            log.error("error while processing callback for columns {}", ids);
+            return false;
+        }
+    }
+
+    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
+        Map<String, byte[]> map = new HashMap<>();
+        List<Result> results = hBaseDAO.search(client, prefix);
+        for (Result result : results){
+            NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
+            for (byte[] bytes : navigableMap.keySet()){
+                String key = Bytes.toString(bytes);
+                map.put(key, navigableMap.get(bytes));
+            }
+        }
+        return map;
+    }
 }

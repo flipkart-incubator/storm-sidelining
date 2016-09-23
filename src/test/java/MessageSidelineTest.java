@@ -11,7 +11,9 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,52 +34,91 @@ public class MessageSidelineTest {
 
     @Test
     public void testForSideline() {
-        service.forceSideline("test", "123", "id1", "hi".getBytes());
-        Assert.assertFalse(service.validateAndUpdate("test", "123", "id2", "hello".getBytes()));
-        Assert.assertTrue(service.validateAndUpdate("test", "1234", "id1", "hi".getBytes()));
+        String topic = "test";
+        String groupId = "123";
+        service.forceSideline(topic, groupId, "id1", "hi".getBytes());
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes()));
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes()));
     }
 
     @Test
     public void testForBatchSideline() {
+        String topic = "test";
+        String groupId = "123";
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline("test", "123", map);
-        Assert.assertFalse(service.validateAndUpdate("test", "123", "id3", "check1".getBytes()));
-        Assert.assertTrue(service.validateAndUpdate("test", "1234", "id1", "hi".getBytes()));
+        service.forceSideline(topic, groupId, map);
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id3", "check1".getBytes()));
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes()));
 
     }
 
     @Test
     public void testForReplay()throws Exception {
+        String topic = "test";
+        String groupId = "123";
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline("test", "123", map);
-        Map<String, byte[]> data = service.replay("test", "123");
+        service.forceSideline(topic, groupId, map);
+        Map<String, byte[]> data = service.fetchData(topic, groupId);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
-        Assert.assertTrue(service.validateAndUpdate("test", "123", "id1", "hi".getBytes()));
+        service.replay(topic, groupId, new ArrayList<>(data.keySet()));
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
+    }
+
+    @Test
+    public void testForPartialReplay() throws Exception {
+        String topic = "test";
+        String groupId = "123";
+        Map<String, byte[]> map = new HashMap<>();
+        map.put("id1", "hi".getBytes());
+        map.put("id2", "hello".getBytes());
+        service.forceSideline(topic, groupId, map);
+        Map<String, byte[]> data = service.fetchData(topic, groupId);
+        Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
+        Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
+
+        List<String> list = new ArrayList<>();
+        list.add("id1");
+        service.replay(topic, groupId, list);
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
+    }
+
+    @Test
+    public void testPrefixScan() throws Exception {
+        String topic = "test";
+        String groupId = "123";
+        Map<String, byte[]> map = new HashMap<>();
+        map.put("id1", "hi".getBytes());
+        map.put("id2", "hello".getBytes());
+        service.forceSideline(topic, groupId, map);
+
+        Map<String, byte[]> data = service.search("tes");
+        Assert.assertEquals("hi", Bytes.toString(data.get("id1")));
+        Assert.assertEquals("hello", Bytes.toString(data.get("id2")));
     }
 
     @Test
     public void testForUpdate() throws Exception {
+        String topic = "test";
+        String groupId = "123";
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline("test", "123", map);
-        Map<String, byte[]> data = service.replay("test", "123");
+        service.forceSideline(topic, groupId, map);
+        Map<String, byte[]> data = service.fetchData(topic, groupId);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
-        service.update("test", "123", "id1", "check1".getBytes());
-        service.update("test", "123", "id2", "check2".getBytes());
-        data = service.replay("test", "123");
+        service.update(topic, groupId, "id1", "check1".getBytes());
+        service.update(topic, groupId, "id2", "check2".getBytes());
+        data = service.fetchData(topic, groupId);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "check1");
         Assert.assertFalse("hello".equals(Bytes.toString(data.get("id2"))));
-
-
     }
 
     @AfterClass

@@ -17,7 +17,9 @@ public class MessageFactory {
 
     private static MessageService service;
 
-    public static MessageService getService(HTablePool tablePool) {
+    public static MessageService getService(HTablePool tablePool) throws HBaseClientException {
+        if (tablePool == null)
+            throw new HBaseClientException("HBASE TABLE POOL NULL");
         if (service == null){
             synchronized (MessageFactory.class){
                 if (service == null){
@@ -25,6 +27,12 @@ public class MessageFactory {
                 }
             }
         }
+        return service;
+    }
+
+    public static MessageService getService() throws HBaseClientException {
+        if (service == null)
+            throw new HBaseClientException();
         return service;
     }
 }
