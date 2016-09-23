@@ -80,7 +80,6 @@ public class HBaseClient {
         } catch (IOException e) {
             String msg = "While deleting columns  ";
             throw new HBaseClientException(msg, e);
-
         }
     }
 

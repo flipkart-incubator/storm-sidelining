@@ -19,7 +19,7 @@ public class MessageFactory {
 
     public static MessageService getService(HTablePool tablePool) throws HBaseClientException {
         if (tablePool == null)
-            throw new HBaseClientException("HBASE TABLE POOL NULL");
+            throw new HBaseClientException("HTablePool null");
         if (service == null){
             synchronized (MessageFactory.class){
                 if (service == null){
@@ -32,7 +32,7 @@ public class MessageFactory {
 
     public static MessageService getService() throws HBaseClientException {
         if (service == null)
-            throw new HBaseClientException();
+            throw new HBaseClientException("service not initialised");
         return service;
     }
 }
