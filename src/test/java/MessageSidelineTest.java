@@ -3,6 +3,7 @@ import com.flipkart.message.sidelining.configs.HBaseClientConfig;
 import com.flipkart.message.sidelining.configs.HBaseTableConfig;
 import com.flipkart.message.sidelining.factories.MessageFactory;
 import com.flipkart.message.sidelining.service.MessageService;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
@@ -19,6 +20,7 @@ import java.util.Map;
 /**
  * Created by saurabh.jha on 21/09/16.
  */
+@Slf4j
 public class MessageSidelineTest {
 
     private static Configuration configuration;
