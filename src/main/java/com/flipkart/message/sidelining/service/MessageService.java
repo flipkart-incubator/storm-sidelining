@@ -106,7 +106,7 @@ public class MessageService {
         }
     }
 
-    public boolean replay(String topic, String groupId, List<String> ids){
+    public boolean deleteData(String topic, String groupId, List<String> ids){
         log.info("replaying data for topic {} and groupId {}", topic, groupId);
         try {
             hBaseDAO.deleteColumns(client, topic, groupId, ids);

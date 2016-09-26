@@ -68,7 +68,7 @@ public class MessageSidelineTest {
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
-        service.replay(topic, groupId, new ArrayList<>(data.keySet()));
+        service.deleteData(topic, groupId, new ArrayList<>(data.keySet()));
         Assert.assertTrue(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
     }
 
@@ -86,7 +86,7 @@ public class MessageSidelineTest {
 
         List<String> list = new ArrayList<>();
         list.add("id1");
-        service.replay(topic, groupId, list);
+        service.deleteData(topic, groupId, list);
         Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
     }
 
