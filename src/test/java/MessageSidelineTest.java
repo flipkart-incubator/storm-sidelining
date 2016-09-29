@@ -87,7 +87,7 @@ public class MessageSidelineTest {
         List<String> list = new ArrayList<>();
         list.add("id1");
         service.deleteData(topic, groupId, list);
-        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes()));
     }
 
     @Test
