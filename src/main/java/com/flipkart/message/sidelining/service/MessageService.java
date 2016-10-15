@@ -26,7 +26,7 @@ public class MessageService {
         hBaseDAO = new HBaseDAO();
     }
 
-    public boolean forceSideline(String topic, String groupId, String id, byte[] data){
+    public boolean forceSideline(String topic, String groupId, String id, byte[] data, String tableName){
         log.info("sidelining data {} for topic {} and groupId {}", data, topic, groupId);
         try {
             Message message = new Message();
@@ -34,7 +34,7 @@ public class MessageService {
             message.setTopic(topic);
             message.setId(id);
             message.setData(data);
-            hBaseDAO.insert(client, message);
+            hBaseDAO.insert(client, message, tableName);
         } catch (HBaseClientException e) {
             log.error("error sidelining message {} exception {}", data, e);
             return false;
@@ -42,10 +42,10 @@ public class MessageService {
         return true;
     }
 
-    public boolean forceSideline(String topic, String groupId, Map<String, byte[]> map){
+    public boolean forceSideline(String topic, String groupId, Map<String, byte[]> map, String tableName){
         log.info("sidelining data in batch for topic {} and groupId {}", topic, groupId);
         try {
-            hBaseDAO.insert(client, topic, groupId, map);
+            hBaseDAO.insert(client, topic, groupId, map, tableName);
         } catch (HBaseClientException e) {
             log.error("error batch sidelining messages {}", e);
             return false;
@@ -53,10 +53,10 @@ public class MessageService {
         return true;
     }
 
-    public Map<String, byte[]> fetchData(String topic, String groupId) throws HBaseClientException {
+    public Map<String, byte[]> fetchData(String topic, String groupId, String tableName) throws HBaseClientException {
         log.info("fetching data for topic {} and groupId {}", topic, groupId);
         Map<String, byte[]> map = new HashMap<>();
-        Result result = hBaseDAO.get(client, topic, groupId);
+        Result result = hBaseDAO.get(client, topic, groupId, tableName);
         NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
         if (navigableMap == null || navigableMap.size() == 0)
             return map;
@@ -67,10 +67,10 @@ public class MessageService {
         return map;
     }
 
-    public boolean validateAndUpdate(String topic, String groupId, String id, byte[] data) {
+    public boolean validateAndUpdate(String topic, String groupId, String id, byte[] data, String tableName) {
         log.info("validaing data {} for topic {} and groupId {}", data, topic, groupId);
         try {
-            Result result = hBaseDAO.get(client, topic, groupId);
+            Result result = hBaseDAO.get(client, topic, groupId, tableName);
             NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
             if (navigableMap != null && navigableMap.size() > 0){
                 Message message = new Message();
@@ -78,7 +78,7 @@ public class MessageService {
                 message.setTopic(topic);
                 message.setGroupId(groupId);
                 message.setData(data);
-                hBaseDAO.insert(client, message);
+                hBaseDAO.insert(client, message, tableName);
                 return false;
             }
             return true;
@@ -90,7 +90,7 @@ public class MessageService {
 
     }
 
-    public boolean update(String topic, String groupId, String id, byte[] data){
+    public boolean update(String topic, String groupId, String id, byte[] data, String tableName){
         log.info("updating data {}", data);
         try {
             Message message = new Message();
@@ -98,7 +98,7 @@ public class MessageService {
             message.setTopic(topic);
             message.setId(id);
             message.setData(data);
-            hBaseDAO.update(client, message);
+            hBaseDAO.update(client, message, tableName);
             return true;
         } catch (HBaseClientException e) {
             log.error("error while updating the data {} exception {}", data, e);
@@ -106,14 +106,14 @@ public class MessageService {
         }
     }
 
-    public boolean deleteData(String topic, String groupId, List<String> ids){
-        log.info("replaying data for topic {} and groupId {}", topic, groupId);
+    public boolean deleteData(String topic, String groupId, List<String> ids, String tableName){
+        log.info("deleting data for topic {} and groupId {}", topic, groupId);
         try {
-            hBaseDAO.deleteColumns(client, topic, groupId, ids);
-            Result result = hBaseDAO.get(client, topic, groupId);
+            hBaseDAO.deleteColumns(client, topic, groupId, ids, tableName);
+            Result result = hBaseDAO.get(client, topic, groupId, tableName);
             NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
             if (navigableMap == null || navigableMap.size() == 0)
-                hBaseDAO.deleteRow(client, topic, groupId);
+                hBaseDAO.deleteRow(client, topic, groupId, tableName);
             return true;
         } catch (HBaseClientException e) {
             log.error("error while replaying the data {}", e);
@@ -121,10 +121,21 @@ public class MessageService {
         }
     }
 
-    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
+    public boolean deleteRow(String topic, String groupId, String tableName){
+        log.info("deleting data for topic {} and groupId {}", topic, groupId);
+        try {
+            hBaseDAO.deleteRow(client, topic, groupId, tableName);
+            return true;
+        } catch (HBaseClientException e) {
+            log.error("error while replaying the data {}", e);
+            return false;
+        }
+    }
+
+    public Map<String, byte[]> search(String prefix, String tableName) throws HBaseClientException {
         log.info("searching for prefix {}", prefix);
         Map<String, byte[]> map = new HashMap<>();
-        List<Result> results = hBaseDAO.search(client, prefix);
+        List<Result> results = hBaseDAO.search(client, prefix, tableName);
         for (Result result : results){
             NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(HBaseTableConfig.COL_FAMILY_DATA));
             for (byte[] bytes : navigableMap.keySet()){

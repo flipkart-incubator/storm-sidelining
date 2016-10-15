@@ -15,40 +15,40 @@ import java.util.Map;
  */
 public class HBaseDAO {
 
-    public void insert(HBaseClient client, Message message) throws HBaseClientException{
+    public void insert(HBaseClient client, Message message, String tableName) throws HBaseClientException{
         String row = message.getTopic() + message.getGroupId();
-        client.putColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_TOPIC, Bytes.toBytes(message.getTopic()));
-        client.putColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_GROUPID, Bytes.toBytes(message.getGroupId()));
-        client.putColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_DATA, message.getId(), message.getData());
+        client.putColumn(tableName, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_TOPIC, Bytes.toBytes(message.getTopic()));
+        client.putColumn(tableName, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_GROUPID, Bytes.toBytes(message.getGroupId()));
+        client.putColumn(tableName, row, HBaseTableConfig.COL_FAMILY_DATA, message.getId(), message.getData());
     }
 
-    public void insert(HBaseClient client, String topic, String groupId, Map<String, byte[]> map) throws HBaseClientException {
+    public void insert(HBaseClient client, String topic, String groupId, Map<String, byte[]> map, String tableName) throws HBaseClientException {
         String row = topic + groupId;
-        client.putColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_TOPIC, Bytes.toBytes(topic));
-        client.putColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_GROUPID, Bytes.toBytes(groupId));
-        client.putColumns(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_DATA, map);
+        client.putColumn(tableName, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_TOPIC, Bytes.toBytes(topic));
+        client.putColumn(tableName, row, HBaseTableConfig.COL_FAMILY_ATTRIBUTES, HBaseTableConfig.ATTR_GROUPID, Bytes.toBytes(groupId));
+        client.putColumns(tableName, row, HBaseTableConfig.COL_FAMILY_DATA, map);
     }
 
-    public void deleteRow(HBaseClient client, String topic, String groupId) throws HBaseClientException {
+    public void deleteRow(HBaseClient client, String topic, String groupId, String tableName) throws HBaseClientException {
         String row = topic + groupId;
-        client.clearRow(HBaseTableConfig.TABLE_NAME, row);
+        client.clearRow(tableName, row);
     }
 
-    public Result get(HBaseClient client, String topic, String groupId) throws HBaseClientException {
-        return client.getRow(HBaseTableConfig.TABLE_NAME, topic + groupId);
+    public Result get(HBaseClient client, String topic, String groupId, String tableName) throws HBaseClientException {
+        return client.getRow(tableName, topic + groupId);
     }
 
-    public void update( HBaseClient client, Message message) throws HBaseClientException {
+    public void update( HBaseClient client, Message message, String tableName) throws HBaseClientException {
         String row = message.getTopic() + message.getGroupId();
-        client.updateColumn(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_DATA , message.getId(), message.getData());
+        client.updateColumn(tableName, row, HBaseTableConfig.COL_FAMILY_DATA , message.getId(), message.getData());
     }
 
-    public void deleteColumns(HBaseClient client, String topic, String groupId, List<String> ids) throws HBaseClientException {
+    public void deleteColumns(HBaseClient client, String topic, String groupId, List<String> ids, String tableName) throws HBaseClientException {
         String row = topic + groupId;
-        client.deleteColumns(HBaseTableConfig.TABLE_NAME, row, HBaseTableConfig.COL_FAMILY_DATA, ids);
+        client.deleteColumns(tableName, row, HBaseTableConfig.COL_FAMILY_DATA, ids);
     }
 
-    public List<Result> search(HBaseClient client, String prefix) throws HBaseClientException {
-        return client.scanPrefix(HBaseTableConfig.TABLE_NAME, prefix);
+    public List<Result> search(HBaseClient client, String prefix, String tableName) throws HBaseClientException {
+        return client.scanPrefix(tableName, prefix);
     }
 }

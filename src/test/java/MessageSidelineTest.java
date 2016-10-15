@@ -23,6 +23,8 @@ import java.util.Map;
 @Slf4j
 public class MessageSidelineTest {
 
+    //table name
+    public static final String TABLE_NAME = "oms.messages";
     private static Configuration configuration;
     private static MessageService service;
 
@@ -38,9 +40,9 @@ public class MessageSidelineTest {
     public void testForSideline() {
         String topic = "test";
         String groupId = "123";
-        service.forceSideline(topic, groupId, "id1", "hi".getBytes());
-        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes()));
-        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes()));
+        service.forceSideline(topic, groupId, "id1", "hi".getBytes(), TABLE_NAME);
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes(), TABLE_NAME));
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes(), TABLE_NAME));
     }
 
     @Test
@@ -50,9 +52,9 @@ public class MessageSidelineTest {
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline(topic, groupId, map);
-        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id3", "check1".getBytes()));
-        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes()));
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id3", "check1".getBytes(), TABLE_NAME));
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId + "1", "id1", "hi".getBytes(), TABLE_NAME));
 
     }
 
@@ -63,13 +65,13 @@ public class MessageSidelineTest {
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline(topic, groupId, map);
-        Map<String, byte[]> data = service.fetchData(topic, groupId);
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
+        Map<String, byte[]> data = service.fetchData(topic, groupId, TABLE_NAME);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
-        service.deleteData(topic, groupId, new ArrayList<>(data.keySet()));
-        Assert.assertTrue(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes()));
+        service.deleteData(topic, groupId, new ArrayList<>(data.keySet()), TABLE_NAME);
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId, "id1", "hi".getBytes(), TABLE_NAME));
     }
 
     @Test
@@ -79,15 +81,35 @@ public class MessageSidelineTest {
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline(topic, groupId, map);
-        Map<String, byte[]> data = service.fetchData(topic, groupId);
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
+        Map<String, byte[]> data = service.fetchData(topic, groupId, TABLE_NAME);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
         List<String> list = new ArrayList<>();
         list.add("id1");
-        service.deleteData(topic, groupId, list);
-        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes()));
+        service.deleteData(topic, groupId, list, TABLE_NAME);
+        Assert.assertFalse(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes(), TABLE_NAME));
+    }
+
+    @Test
+    public void testDeleteRow() throws Exception {
+        String topic = "test";
+        String groupId = "123";
+        Map<String, byte[]> map = new HashMap<>();
+        map.put("id1", "hi".getBytes());
+        map.put("id2", "hello".getBytes());
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
+        Map<String, byte[]> data = service.fetchData(topic, groupId, TABLE_NAME);
+        Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
+        Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
+
+        service.deleteRow(topic, groupId, TABLE_NAME);
+
+        data = service.fetchData(topic, groupId, TABLE_NAME);
+        Assert.assertTrue(data == null || data.size() == 0);
+        Assert.assertTrue(service.validateAndUpdate(topic, groupId, "id2", "hello".getBytes(), TABLE_NAME));
+
     }
 
     @Test
@@ -97,9 +119,9 @@ public class MessageSidelineTest {
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline(topic, groupId, map);
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
 
-        Map<String, byte[]> data = service.search("tes");
+        Map<String, byte[]> data = service.search("tes", TABLE_NAME);
         Assert.assertEquals("hi", Bytes.toString(data.get("id1")));
         Assert.assertEquals("hello", Bytes.toString(data.get("id2")));
     }
@@ -111,14 +133,14 @@ public class MessageSidelineTest {
         Map<String, byte[]> map = new HashMap<>();
         map.put("id1", "hi".getBytes());
         map.put("id2", "hello".getBytes());
-        service.forceSideline(topic, groupId, map);
-        Map<String, byte[]> data = service.fetchData(topic, groupId);
+        service.forceSideline(topic, groupId, map, TABLE_NAME);
+        Map<String, byte[]> data = service.fetchData(topic, groupId, TABLE_NAME);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "hi");
         Assert.assertEquals(Bytes.toString(data.get("id2")), "hello");
 
-        service.update(topic, groupId, "id1", "check1".getBytes());
-        service.update(topic, groupId, "id2", "check2".getBytes());
-        data = service.fetchData(topic, groupId);
+        service.update(topic, groupId, "id1", "check1".getBytes(), TABLE_NAME);
+        service.update(topic, groupId, "id2", "check2".getBytes(), TABLE_NAME);
+        data = service.fetchData(topic, groupId, TABLE_NAME);
         Assert.assertEquals(Bytes.toString(data.get("id1")), "check1");
         Assert.assertFalse("hello".equals(Bytes.toString(data.get("id2"))));
     }
@@ -129,9 +151,9 @@ public class MessageSidelineTest {
             // Instantiating HBaseAdmin class
             HBaseAdmin admin = new HBaseAdmin(configuration);
             // disabling table named emp
-            admin.disableTable(HBaseTableConfig.TABLE_NAME);
+            admin.disableTable(TABLE_NAME);
             // Deleting emp
-            admin.deleteTable(HBaseTableConfig.TABLE_NAME);
+            admin.deleteTable(TABLE_NAME);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -140,7 +162,7 @@ public class MessageSidelineTest {
     private static void createTable(){
         try {
             HBaseAdmin admin = new HBaseAdmin(configuration);
-            HTableDescriptor tableDescriptor = new HTableDescriptor(HBaseTableConfig.TABLE_NAME);
+            HTableDescriptor tableDescriptor = new HTableDescriptor(TABLE_NAME);
             HColumnDescriptor attr = new HColumnDescriptor(HBaseTableConfig.COL_FAMILY_ATTRIBUTES);
             HColumnDescriptor data = new HColumnDescriptor(HBaseTableConfig.COL_FAMILY_DATA);
             tableDescriptor.addFamily(attr);
