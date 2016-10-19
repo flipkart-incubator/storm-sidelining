@@ -20,13 +20,15 @@ public class MessageService {
 
     HBaseClient client;
     HBaseDAO hBaseDAO;
+    String tableName;
 
-    public MessageService(HTablePool tablePool) {
+    public MessageService(HTablePool tablePool, String tableName) {
         this.client = new HBaseClient(tablePool);
         hBaseDAO = new HBaseDAO();
+        this.tableName = tableName;
     }
 
-    public boolean forceSideline(String topic, String groupId, String id, byte[] data, String tableName){
+    public boolean forceSideline(String topic, String groupId, String id, byte[] data){
         log.info("sidelining data {} for topic {} and groupId {}", data, topic, groupId);
         try {
             Message message = new Message();
@@ -42,7 +44,7 @@ public class MessageService {
         return true;
     }
 
-    public boolean forceSideline(String topic, String groupId, Map<String, byte[]> map, String tableName){
+    public boolean forceSideline(String topic, String groupId, Map<String, byte[]> map){
         log.info("sidelining data in batch for topic {} and groupId {}", topic, groupId);
         try {
             hBaseDAO.insert(client, topic, groupId, map, tableName);
@@ -53,7 +55,7 @@ public class MessageService {
         return true;
     }
 
-    public Map<String, byte[]> fetchData(String topic, String groupId, String tableName) throws HBaseClientException {
+    public Map<String, byte[]> fetchData(String topic, String groupId) throws HBaseClientException {
         log.info("fetching data for topic {} and groupId {}", topic, groupId);
         Map<String, byte[]> map = new HashMap<>();
         Result result = hBaseDAO.get(client, topic, groupId, tableName);
@@ -67,7 +69,7 @@ public class MessageService {
         return map;
     }
 
-    public boolean validateAndUpdate(String topic, String groupId, String id, byte[] data, String tableName) {
+    public boolean validateAndUpdate(String topic, String groupId, String id, byte[] data) {
         log.info("validaing data {} for topic {} and groupId {}", data, topic, groupId);
         try {
             Result result = hBaseDAO.get(client, topic, groupId, tableName);
@@ -90,7 +92,7 @@ public class MessageService {
 
     }
 
-    public boolean update(String topic, String groupId, String id, byte[] data, String tableName){
+    public boolean update(String topic, String groupId, String id, byte[] data){
         log.info("updating data {}", data);
         try {
             Message message = new Message();
@@ -106,7 +108,7 @@ public class MessageService {
         }
     }
 
-    public boolean deleteData(String topic, String groupId, List<String> ids, String tableName){
+    public boolean deleteData(String topic, String groupId, List<String> ids){
         log.info("deleting data for topic {} and groupId {}", topic, groupId);
         try {
             hBaseDAO.deleteColumns(client, topic, groupId, ids, tableName);
@@ -121,7 +123,7 @@ public class MessageService {
         }
     }
 
-    public boolean deleteRow(String topic, String groupId, String tableName){
+    public boolean deleteRow(String topic, String groupId){
         log.info("deleting data for topic {} and groupId {}", topic, groupId);
         try {
             hBaseDAO.deleteRow(client, topic, groupId, tableName);
@@ -132,7 +134,7 @@ public class MessageService {
         }
     }
 
-    public Map<String, byte[]> search(String prefix, String tableName) throws HBaseClientException {
+    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
         log.info("searching for prefix {}", prefix);
         Map<String, byte[]> map = new HashMap<>();
         List<Result> results = hBaseDAO.search(client, prefix, tableName);

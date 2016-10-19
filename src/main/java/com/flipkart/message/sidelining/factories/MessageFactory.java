@@ -17,13 +17,13 @@ public class MessageFactory {
 
     private static MessageService service;
 
-    public static MessageService getService(HTablePool tablePool) throws HBaseClientException {
+    public static MessageService getService(HTablePool tablePool, String tableName) throws HBaseClientException {
         if (tablePool == null)
             throw new HBaseClientException("HTablePool null");
         if (service == null){
             synchronized (MessageFactory.class){
                 if (service == null){
-                    service = new MessageService(tablePool);
+                    service = new MessageService(tablePool, tableName);
                 }
             }
         }
