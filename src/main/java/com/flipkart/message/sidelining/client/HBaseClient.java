@@ -4,27 +4,18 @@ package com.flipkart.message.sidelining.client;
  * Created by saurabh.jha on 18/09/16.
  */
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
+import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.HTableInterface;
-import org.apache.hadoop.hbase.client.HTablePool;
-import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
-import com.google.common.collect.Lists;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class HBaseClient {
 
@@ -281,6 +272,16 @@ public class HBaseClient {
             admin.enableTable(tableName);
         } catch (IOException e) {
             throw new HBaseClientException(e);
+        }
+    }
+
+    public long incrementVersion(String tableName, String row, String cf, String column) throws HBaseClientException {
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            return table.incrementColumnValue(row.getBytes(), cf.getBytes(), column.getBytes(), 1L);
+        } catch (IOException e) {
+            String msg = "While mutate columns  ";
+            throw new HBaseClientException(msg, e);
+
         }
     }
 }

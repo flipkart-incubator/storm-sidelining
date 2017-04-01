@@ -6,10 +6,8 @@ package com.flipkart.message.sidelining.configs;
 public class HBaseTableConfig {
 
     //column family names
-    public static final String COL_FAMILY_ATTRIBUTES = "attributes";
-    public static final String COL_FAMILY_DATA = "data";
+    public static final String CF = "cf";
 
     //attributes name
-    public static final String ATTR_TOPIC = "topic";
-    public static final String ATTR_GROUPID = "groupId";
+    public static final String VERSION = "_version";
 }
