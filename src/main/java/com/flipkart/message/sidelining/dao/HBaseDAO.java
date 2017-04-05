@@ -7,6 +7,7 @@ import com.flipkart.message.sidelining.models.Message;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.flipkart.message.sidelining.configs.HBaseTableConfig.CF;
@@ -41,8 +42,19 @@ public class HBaseDAO {
     }
 
     public void deleteRow(String topic, String groupId) throws HBaseClientException {
-
         client.clearRow(tableName, getRowKey(topic, groupId));
+    }
+
+    public void checkAndDeleteRow(String topic, String groupId, long version) throws HBaseClientException {
+        client.checkAndClearRow(tableName, getRowKey(topic, groupId),CF,VERSION,version);
+    }
+
+    public void checkAndDeleteRow(String rowKey, long version) throws HBaseClientException {
+        client.checkAndClearRow(tableName, rowKey, CF, VERSION, version);
+    }
+
+    public void deleteColumns(String topic, String groupId, List<String> ids) throws HBaseClientException {
+        client.deleteColumns(tableName, getRowKey(topic, groupId), CF, ids);
     }
 
     public Result get(String topic, String groupId) throws HBaseClientException {
@@ -53,12 +65,8 @@ public class HBaseDAO {
         client.updateColumn(tableName, message.getRowKey(), CF, message.getId(), message.getData());
     }
 
-    public void deleteColumns(String topic, String groupId, List<String> ids) throws HBaseClientException {
-        client.deleteColumns(tableName, getRowKey(topic, groupId), CF, ids);
-    }
-
-    public List<Result> search(String prefix) throws HBaseClientException {
-        return client.scanPrefix(tableName, prefix);
+    public ArrayList<Result> scan(String firstRow, String prefix, int batch) throws HBaseClientException {
+        return client.scanPrefix(tableName, firstRow, prefix, batch);
     }
 
     public long getVersion(String topic, String groupId) throws HBaseClientException {

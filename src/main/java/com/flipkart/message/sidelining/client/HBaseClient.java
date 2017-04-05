@@ -202,11 +202,12 @@ public class HBaseClient {
         }
     }
 
-    public List<Result> scanPrefix(String tableName, String prefix) throws HBaseClientException {
+    public ArrayList<Result> scanPrefix(String tableName, String firstRow, String prefix, int batch) throws HBaseClientException {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
-            Scan scan = new Scan(Bytes.toBytes(prefix));
+            Scan scan = new Scan(Bytes.toBytes(firstRow));
             PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
             scan.setFilter(prefixFilter);
+            scan.setBatch(batch);
             ResultScanner resultScanner = table.getScanner(scan);
             ArrayList<Result> resultSets = Lists.newArrayList();
             for(Result r : resultScanner) {
@@ -256,6 +257,17 @@ public class HBaseClient {
             throw new HBaseClientException(msg, e);
         }
     }
+
+    public void checkAndClearRow(String tableName, String row,String cf,String column,long version) throws HBaseClientException {
+            try ( HTableInterface table = tablePool.getTable(tableName)) {
+                Delete delete = new Delete(Bytes.toBytes(row));
+                table.checkAndDelete( row.getBytes(), cf.getBytes() , column.getBytes(),
+                      Bytes.toBytes(version),delete);
+            } catch (IOException e) {
+                String msg = "While deleting [" + row + "]";
+                throw new HBaseClientException(msg, e);
+            }
+        }
 
     public void createTable(HTableDescriptor descriptor) throws HBaseClientException {
         try (HBaseAdmin admin = new HBaseAdmin(config)) {

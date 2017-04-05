@@ -3,16 +3,16 @@ package com.flipkart.message.sidelining.service;
 import com.flipkart.message.sidelining.client.HBaseClient;
 import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.dao.HBaseDAO;
-import com.flipkart.message.sidelining.hbase.KeyDistributor;
 import com.flipkart.message.sidelining.models.Message;
+import com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.client.HTablePool;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 
@@ -22,6 +22,7 @@ import static com.flipkart.message.sidelining.configs.HBaseTableConfig.CF;
  * Created by saurabh.jha on 16/09/16.
  */
 
+//TODO atomic version updates
 public class SidelineService {
 
     private static final Logger log = LoggerFactory.getLogger(SidelineService.class);
@@ -145,17 +146,56 @@ public class SidelineService {
         }
     }
 
-    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
-        log.info("searching for prefix {}", prefix);
-        Map<String, byte[]> map = new HashMap<>();
-        List<Result> results = hBaseDAO.search(prefix);
-        for (Result result : results){
-            NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(CF));
-            for (byte[] bytes : navigableMap.keySet()){
-                String key = Bytes.toString(bytes);
-                map.put(key, navigableMap.get(bytes));
+    public boolean checkAndDeleteRow(String topic, String groupId, long version) {
+            log.info("deleting data for topic {} and groupId {}", topic, groupId);
+            try {
+                hBaseDAO.checkAndDeleteRow(topic, groupId, version);
+                return true;
+            } catch (HBaseClientException e) {
+                log.error("error while replaying the data {}", e);
+                return false;
             }
+
         }
-        return map;
+    public boolean checkAndDeleteRow(String rowKey, long version) {
+        log.info("deleting data for rowKey {}", rowKey);
+        try {
+            hBaseDAO.checkAndDeleteRow(rowKey, version);
+            return true;
+        } catch (HBaseClientException e) {
+            log.error("error while replaying the data {}", e);
+            return false;
+        }
+
+    }
+
+
+    public boolean deleteEvent(String topic, String groupId, String column) {
+        log.info("deleting data for topic {}, groupId {} and column {}", topic, groupId, column);
+        try {
+            hBaseDAO.deleteColumns(topic, groupId, Lists.newArrayList(column));
+            return true;
+        } catch (HBaseClientException e) {
+            log.error("error while deleting the data {}", e);
+            return false;
+        }
+    }
+
+//    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
+//        log.info("searching for prefix {}", prefix);
+//        Map<String, byte[]> map = new HashMap<>();
+//        List<Result> results = hBaseDAO.search(prefix);
+//        for (Result result : results){
+//            NavigableMap<byte[], byte[]> navigableMap  = result.getFamilyMap(Bytes.toBytes(CF));
+//            for (byte[] bytes : navigableMap.keySet()){
+//                String key = Bytes.toString(bytes);
+//                map.put(key, navigableMap.get(bytes));
+//            }
+//        }
+//        return map;
+//    }
+
+    public ArrayList<Result> scan(String firstRow, String topology, int batch) throws HBaseClientException {
+        return hBaseDAO.scan(firstRow, topology, batch);
     }
 }
