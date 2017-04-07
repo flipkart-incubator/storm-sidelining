@@ -4,6 +4,7 @@ import com.flipkart.message.sidelining.client.HBaseClient;
 import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.hbase.KeyDistributor;
 import com.flipkart.message.sidelining.models.Message;
+import com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -34,11 +35,8 @@ public class HBaseDAO {
     }
 
     public boolean checkAndPut(Message message, long version) throws HBaseClientException {
-        boolean success = client.checkAndPutColumn(tableName, message.getRowKey(), CF, message.getId(), message.getData(), VERSION, Bytes.toBytes(version));
-        if (success) {
-            client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
-        }
-        return success;
+        version = client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
+        return client.checkAndPutColumn(tableName, message.getRowKey(), CF, message.getId(), message.getData(), VERSION, Bytes.toBytes(version));
     }
 
     public void deleteRow(String topic, String groupId) throws HBaseClientException {
@@ -55,6 +53,10 @@ public class HBaseDAO {
 
     public void deleteColumns(String topic, String groupId, List<String> ids) throws HBaseClientException {
         client.deleteColumns(tableName, getRowKey(topic, groupId), CF, ids);
+    }
+
+    public void deleteColumn(String rowKey, String column) throws HBaseClientException {
+        client.deleteColumns(tableName, rowKey, CF, Lists.newArrayList(column));
     }
 
     public Result get(String topic, String groupId) throws HBaseClientException {

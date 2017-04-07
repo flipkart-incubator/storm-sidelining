@@ -22,7 +22,6 @@ import static com.flipkart.message.sidelining.configs.HBaseTableConfig.CF;
  * Created by saurabh.jha on 16/09/16.
  */
 
-//TODO atomic version updates
 public class SidelineService {
 
     private static final Logger log = LoggerFactory.getLogger(SidelineService.class);
@@ -180,6 +179,17 @@ public class SidelineService {
             return false;
         }
     }
+
+    public boolean deleteEvent(String rowKey, String column) {
+            log.info("deleting data for rowKey {} and column {}", rowKey, column);
+            try {
+                hBaseDAO.deleteColumn(rowKey,column);
+                return true;
+            } catch (HBaseClientException e) {
+                log.error("error while deleting the data {}", e);
+                return false;
+            }
+        }
 
 //    public Map<String, byte[]> search(String prefix) throws HBaseClientException {
 //        log.info("searching for prefix {}", prefix);

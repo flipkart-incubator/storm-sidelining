@@ -10,6 +10,7 @@ import com.flipkart.message.sidelining.configs.HBaseTableConfig;
 import com.flipkart.message.sidelining.service.SidelineService;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.inject.Provider;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -32,22 +33,22 @@ public class UnsideliningSpout extends BaseRichSpout {
 
     private List<HbasePartitionManager> partitionManagers = Lists.newArrayList();
     private int currentPartitionIndex = 0;
-    private PartitionState currentPartitionState;
+    private PartitionState currentPartitionState = PartitionState.SCAN_DONE;
 
+    private final Provider<SidelineService> sidelineProvider;
     private SidelineService sideliner;
     private Map config;
     private MultiScheme scheme;
     private SpoutOutputCollector _collector;
 
     private Queue<GroupedEvents> toEmitEvents = Lists.newLinkedList();
-    private Map<byte[], GroupedEvents> inProcessEvents = Maps.newLinkedHashMap();
+    private Map<String, GroupedEvents> inProcessEvents = Maps.newLinkedHashMap();
 
-    //Similar to maxSpoutPending
     private int batchSize = 10;
 
-    UnsideliningSpout(String topologyName, SidelineService sideliner, MultiScheme scheme, String unsidelineStream, int batchSize) {
+    public UnsideliningSpout(String topologyName, Provider<SidelineService> sidelineProvider, MultiScheme scheme, String unsidelineStream, int batchSize) {
         this.topologyName = topologyName;
-        this.sideliner = sideliner;
+        this.sidelineProvider = sidelineProvider;
         this.scheme = scheme;
         this.batchSize = batchSize;
         UNSIDELINE_STREAM = unsidelineStream;
@@ -61,6 +62,8 @@ public class UnsideliningSpout extends BaseRichSpout {
     public void open(Map config, TopologyContext context, SpoutOutputCollector collector) {
         this._collector = collector;
         this.config = config;
+
+        sideliner = sidelineProvider.get();
 
         int totalPartions = 512;
         int taskId = context.getThisTaskId();
@@ -101,7 +104,7 @@ public class UnsideliningSpout extends BaseRichSpout {
             currentPartitionState = partitionManagers.get(currentPartitionIndex).fillEmitQueue();
         } else {
             GroupedEvents groupedEvents = toEmitEvents.remove();
-            Event event = groupedEvents.eventQueue.remove();
+            Event event = groupedEvents.eventQueue.peek();
             List<Object> tuple = generateTuple(event.value);
             StormMsgId stormMsgId = new StormMsgId(groupedEvents.rowKey, event.id);
 
@@ -114,14 +117,18 @@ public class UnsideliningSpout extends BaseRichSpout {
 
     /**
      * //TODO Use same serializer and deserializer.
+     * //Maintains ordering
      */
     private List<Object> generateTuple(byte[] value) {
         try {
-            HashMap<String, Object> result = new ObjectMapper().readValue(value, HashMap.class);
-
-            return new ArrayList(result.values());
+            LinkedHashMap<String, Object> result = new ObjectMapper().readValue(value, LinkedHashMap.class);
+            List<Object> ret = new ArrayList<>(result.size());
+            for (String s : scheme.getOutputFields()) {
+                ret.add(result.get(s));
+            }
+            return ret;
         } catch (IOException e) {
-            log.error("Deserialization error",e);
+            log.error("Deserialization error", e);
         }
         return null;
     }
@@ -146,14 +153,15 @@ public class UnsideliningSpout extends BaseRichSpout {
 
         GroupedEvents groupedEvents = inProcessEvents.get(stormMsgId.rowKey);
         Event event = groupedEvents.eventQueue.peek();
-        if (Arrays.equals(event.id, stormMsgId.messageId)) { // there is no exactly once guarantee
+        if (event.id.equals(stormMsgId.messageId)) { // there is no exactly once guarantee
             groupedEvents.eventQueue.remove();
             if (!groupedEvents.eventQueue.isEmpty()) {
                 log.info("Adding this group to emitQueue {}",groupedEvents.rowKey);
+                sideliner.deleteEvent(stormMsgId.rowKey,stormMsgId.messageId);
                 toEmitEvents.add(groupedEvents);
             } else {
                 log.info("Deleting this group as no events in group {}",groupedEvents.rowKey);
-                sideliner.checkAndDeleteRow(Bytes.toString(groupedEvents.rowKey), groupedEvents.version);
+                sideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version);
             }
             inProcessEvents.remove(groupedEvents.rowKey);
         }
@@ -182,26 +190,26 @@ public class UnsideliningSpout extends BaseRichSpout {
     }
 
     public static class StormMsgId {
-        public byte[] rowKey;
-        public byte[] messageId;
+        public String rowKey;
+        public String messageId;
 
-        public StormMsgId(byte[] rowKey, byte[] messageId) {
+        public StormMsgId(String rowKey, String messageId) {
             this.rowKey = rowKey;
             this.messageId = messageId;
         }
     }
 
     private class GroupedEvents {
-        byte[] rowKey;
+        String rowKey;
         Queue<Event> eventQueue = Lists.newLinkedList();
         long version;
     }
 
     private class Event {
-        byte[] id;
+        String id;
         byte[] value;
 
-        private Event(byte[] id, byte[] value) {
+        private Event(String id, byte[] value) {
             this.id = id;
             this.value = value;
         }
@@ -210,17 +218,19 @@ public class UnsideliningSpout extends BaseRichSpout {
     private class HbasePartitionManager {
 
         int partition;
-        final String TOPOLOGY_PREFIX = partition + "-" + topologyName;
-        String firstRow = TOPOLOGY_PREFIX;
+        String TOPOLOGY_PREFIX ;
+        String firstRow ;
 
         private HbasePartitionManager(int partition) {
             this.partition = partition;
+            TOPOLOGY_PREFIX = partition + "-" + topologyName;
+            this.firstRow = TOPOLOGY_PREFIX;
         }
 
         private PartitionState fillEmitQueue() {
             try {
 
-                ArrayList<Result> resultList = sideliner.scan(firstRow, topologyName, batchSize);
+                ArrayList<Result> resultList = sideliner.scan(firstRow, partition + "-" + topologyName, batchSize);
 
                 List<GroupedEvents> toEmitGroups = transform(resultList);
                 toEmitEvents.addAll(toEmitGroups);
@@ -246,12 +256,12 @@ public class UnsideliningSpout extends BaseRichSpout {
                 List<KeyValue> list = result.list();
                 list.sort((o1, o2) -> (int) (o1.getTimestamp() - o2.getTimestamp()));
                 GroupedEvents groupedEvents = new GroupedEvents();
-                groupedEvents.rowKey = result.getRow();
+                groupedEvents.rowKey = Bytes.toString(result.getRow());
                 for (KeyValue kv : list) {
                     if (Bytes.toString(kv.getQualifier()).equals(HBaseTableConfig.VERSION)) {
                         groupedEvents.version = Bytes.toLong(kv.getValue());
                     } else {
-                        groupedEvents.eventQueue.add(new Event(kv.getQualifier(), kv.getValue()));
+                        groupedEvents.eventQueue.add(new Event(Bytes.toString(kv.getQualifier()), kv.getValue()));
                     }
                 }
                 toEmitGroups.add(groupedEvents);
