@@ -9,6 +9,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.PageFilter;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -206,8 +208,11 @@ public class HBaseClient {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
             Scan scan = new Scan(Bytes.toBytes(firstRow));
             PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
-            scan.setFilter(prefixFilter);
-            scan.setBatch(batch);
+            PageFilter pageFilter = new PageFilter(batch);
+            FilterList filterList = new FilterList();
+            filterList.addFilter(prefixFilter);
+            filterList.addFilter(pageFilter);
+            scan.setFilter(filterList);
             ResultScanner resultScanner = table.getScanner(scan);
             ArrayList<Result> resultSets = Lists.newArrayList();
             for(Result r : resultScanner) {

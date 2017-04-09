@@ -5,11 +5,13 @@ import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.hbase.KeyDistributor;
 import com.flipkart.message.sidelining.models.Message;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.flipkart.message.sidelining.configs.HBaseTableConfig.CF;
 import static com.flipkart.message.sidelining.configs.HBaseTableConfig.VERSION;
@@ -30,8 +32,12 @@ public class HBaseDAO {
 
 
     public void insert(Message message) throws HBaseClientException {
-        client.putColumn(tableName, message.getRowKey(), CF, message.getId(), message.getData());
-        client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
+        long version = client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
+        version = version + 1L;
+        Map<String, byte[]> cells = Maps.newHashMap();
+        cells.put(message.getId(), message.getData());
+        cells.put(VERSION,Bytes.toBytes(version));
+        client.putColumns(tableName, message.getRowKey(), CF, cells);
     }
 
     public boolean checkAndPut(Message message, long version) throws HBaseClientException {

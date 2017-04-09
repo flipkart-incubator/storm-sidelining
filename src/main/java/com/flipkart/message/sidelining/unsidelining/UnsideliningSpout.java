@@ -89,29 +89,33 @@ public class UnsideliningSpout extends BaseRichSpout {
     @Override
     public void nextTuple() {
 
-        if (toEmitEvents.isEmpty()) {
-            if (currentPartitionState == PartitionState.SCAN_DONE) {
-                currentPartitionIndex = (currentPartitionIndex + 1) % partitionManagers.size();
-                if (currentPartitionIndex == partitionManagers.size() - 1) {
-                    try {
-                        log.info("Sleeping for 10s as all scans done.");
-                        Thread.sleep(10000L);
-                    } catch (InterruptedException ignored) {
+        try {
+            if (toEmitEvents.isEmpty()) {
+                if (currentPartitionState == PartitionState.SCAN_DONE) {
+                    currentPartitionIndex = (currentPartitionIndex + 1) % partitionManagers.size();
+                    if (currentPartitionIndex == partitionManagers.size() - 1) {
+                        try {
+                            log.info("Sleeping for 10s as all scans done.");
+                            Thread.sleep(10000L);
+                        } catch (InterruptedException ignored) {
 
+                        }
                     }
                 }
+                currentPartitionState = partitionManagers.get(currentPartitionIndex).fillEmitQueue();
+            } else {
+                GroupedEvents groupedEvents = toEmitEvents.remove();
+                Event event = groupedEvents.eventQueue.peek();
+                List<Object> tuple = generateTuple(event.value);
+                StormMsgId stormMsgId = new StormMsgId(groupedEvents.rowKey, event.id);
+
+                log.info("Emitting tuple rowKey {}, id {}", stormMsgId.rowKey, stormMsgId.messageId);
+                _collector.emit(UNSIDELINE_STREAM, tuple, stormMsgId);
+
+                inProcessEvents.put(groupedEvents.rowKey, groupedEvents);
             }
-            currentPartitionState = partitionManagers.get(currentPartitionIndex).fillEmitQueue();
-        } else {
-            GroupedEvents groupedEvents = toEmitEvents.remove();
-            Event event = groupedEvents.eventQueue.peek();
-            List<Object> tuple = generateTuple(event.value);
-            StormMsgId stormMsgId = new StormMsgId(groupedEvents.rowKey, event.id);
-
-            log.info("Emitting tuple rowKey {}, id {}",stormMsgId.rowKey,stormMsgId.messageId);
-            _collector.emit(UNSIDELINE_STREAM, tuple, stormMsgId);
-
-            inProcessEvents.put(groupedEvents.rowKey, groupedEvents);
+        } catch (Exception e) {
+            log.error("nextTuple failed ",e);
         }
     }
 
@@ -243,7 +247,7 @@ public class UnsideliningSpout extends BaseRichSpout {
                     return PartitionState.SCAN_DONE;
                 }
             } catch (Exception e) {
-                throw new RuntimeException("TODO", e);
+                throw new RuntimeException("Hbase unsideline scan failed", e);
             }
         }
 
