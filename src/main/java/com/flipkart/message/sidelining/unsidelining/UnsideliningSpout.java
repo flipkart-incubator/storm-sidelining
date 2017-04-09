@@ -88,6 +88,7 @@ public class UnsideliningSpout extends BaseRichSpout {
      */
     @Override
     public void nextTuple() {
+        sanityCheck();
 
         try {
             if (toEmitEvents.isEmpty()) {
@@ -95,8 +96,8 @@ public class UnsideliningSpout extends BaseRichSpout {
                     currentPartitionIndex = (currentPartitionIndex + 1) % partitionManagers.size();
                     if (currentPartitionIndex == partitionManagers.size() - 1) {
                         try {
-                            log.info("Sleeping for 10s as all scans done.");
-                            Thread.sleep(10000L);
+                            log.info("Sleeping for 1min as all scans done.");
+                            Thread.sleep(60000L);
                         } catch (InterruptedException ignored) {
 
                         }
@@ -156,18 +157,20 @@ public class UnsideliningSpout extends BaseRichSpout {
         log.info("Got ack for {}, {}",stormMsgId.rowKey,stormMsgId.messageId);
 
         GroupedEvents groupedEvents = inProcessEvents.get(stormMsgId.rowKey);
-        Event event = groupedEvents.eventQueue.peek();
-        if (event.id.equals(stormMsgId.messageId)) { // there is no exactly once guarantee
-            groupedEvents.eventQueue.remove();
-            if (!groupedEvents.eventQueue.isEmpty()) {
-                log.info("Adding this group to emitQueue {}",groupedEvents.rowKey);
-                sideliner.deleteEvent(stormMsgId.rowKey,stormMsgId.messageId);
-                toEmitEvents.add(groupedEvents);
-            } else {
-                log.info("Deleting this group as no events in group {}",groupedEvents.rowKey);
-                sideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version);
+        if(groupedEvents!=null) {
+            Event event = groupedEvents.eventQueue.peek();
+            if (event.id.equals(stormMsgId.messageId)) { // there is no exactly once guarantee
+                groupedEvents.eventQueue.remove();
+                if (!groupedEvents.eventQueue.isEmpty()) {
+                    log.info("Adding this group to emitQueue {}", groupedEvents.rowKey);
+                    sideliner.deleteEvent(stormMsgId.rowKey, stormMsgId.messageId);
+                    toEmitEvents.add(groupedEvents);
+                } else {
+                    log.info("Deleting this group as no events in group {}", groupedEvents.rowKey);
+                    sideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version);
+                }
+                inProcessEvents.remove(groupedEvents.rowKey);
             }
-            inProcessEvents.remove(groupedEvents.rowKey);
         }
     }
 
@@ -176,6 +179,13 @@ public class UnsideliningSpout extends BaseRichSpout {
         StormMsgId stormMsgId = (StormMsgId) msgId;
         log.info("Removing from map , Got fail for {}, {}",stormMsgId.rowKey,stormMsgId.messageId);
         inProcessEvents.remove(stormMsgId.rowKey);
+    }
+
+    private void sanityCheck() {
+        if (inProcessEvents.size() > 10000) {
+            log.error("Events not getting ack or fail");
+            inProcessEvents.clear();
+        }
     }
 
     /**
