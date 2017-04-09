@@ -30,19 +30,21 @@ public class HBaseDAO {
         this.tableName = tableName;
     }
 
-
     public void insert(Message message) throws HBaseClientException {
-        long version = client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
-        version = version + 1L;
+        long version = getVersion(message.getTopic(),message.getGroupId());
+        version++;
         Map<String, byte[]> cells = Maps.newHashMap();
         cells.put(message.getId(), message.getData());
         cells.put(VERSION,Bytes.toBytes(version));
         client.putColumns(tableName, message.getRowKey(), CF, cells);
     }
 
-    public boolean checkAndPut(Message message, long version) throws HBaseClientException {
-        version = client.incrementVersion(tableName, message.getRowKey(), CF, VERSION);
-        return client.checkAndPutColumn(tableName, message.getRowKey(), CF, message.getId(), message.getData(), VERSION, Bytes.toBytes(version));
+    public boolean checkAndPut(Message message, long oldVersion) throws HBaseClientException {
+        long newVersion = oldVersion + 1;
+        Map<String, byte[]> cells = Maps.newHashMap();
+        cells.put(message.getId(), message.getData());
+        cells.put(VERSION, Bytes.toBytes(newVersion));
+        return client.checkAndPutColumns(tableName, message.getRowKey(), CF, cells, VERSION, Bytes.toBytes(oldVersion));
     }
 
     public void deleteRow(String topic, String groupId) throws HBaseClientException {
@@ -50,7 +52,7 @@ public class HBaseDAO {
     }
 
     public void checkAndDeleteRow(String topic, String groupId, long version) throws HBaseClientException {
-        client.checkAndClearRow(tableName, getRowKey(topic, groupId),CF,VERSION,version);
+        checkAndDeleteRow(getRowKey(topic, groupId),version);
     }
 
     public void checkAndDeleteRow(String rowKey, long version) throws HBaseClientException {

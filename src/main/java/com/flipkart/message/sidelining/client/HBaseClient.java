@@ -292,14 +292,14 @@ public class HBaseClient {
         }
     }
 
-    public long incrementVersion(String tableName, String row, String cf, String column) throws HBaseClientException {
-        try (HTableInterface table = tablePool.getTable(tableName)) {
-            return table.incrementColumnValue(row.getBytes(), cf.getBytes(), column.getBytes(), 1L);
-        } catch (IOException e) {
-            String msg = "While mutate columns  ";
-            throw new HBaseClientException(msg, e);
-
-        }
-    }
+//    public long incrementVersion(String tableName, String row, String cf, String column) throws HBaseClientException {
+//        try (HTableInterface table = tablePool.getTable(tableName)) {
+//            return table.incrementColumnValue(row.getBytes(), cf.getBytes(), column.getBytes(), 1L);
+//        } catch (IOException e) {
+//            String msg = "While mutate columns  ";
+//            throw new HBaseClientException(msg, e);
+//
+//        }
+//    }
 }
 
