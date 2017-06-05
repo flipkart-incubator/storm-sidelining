@@ -6,14 +6,12 @@ import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichSpout;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.flipkart.message.sidelining.configs.HBaseTableConfig;
-import com.flipkart.message.sidelining.service.SidelineService;
+import com.flipkart.message.sidelining.models.Event;
+import com.flipkart.message.sidelining.models.GroupedEvents;
+import com.flipkart.message.sidelining.service.StormSideliner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.inject.Provider;
-import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,8 +33,8 @@ public class UnsideliningSpout extends BaseRichSpout {
     private int currentPartitionIndex = 0;
     private PartitionState currentPartitionState = PartitionState.SCAN_DONE;
 
-    private final Provider<SidelineService> sidelineProvider;
-    private SidelineService sideliner;
+    private final Provider<StormSideliner> sidelineProvider;
+    private StormSideliner stormSideliner;
     private Map config;
     private MultiScheme scheme;
     private SpoutOutputCollector _collector;
@@ -46,7 +44,7 @@ public class UnsideliningSpout extends BaseRichSpout {
 
     private int batchSize = 10;
 
-    public UnsideliningSpout(String topologyName, Provider<SidelineService> sidelineProvider, MultiScheme scheme, String unsidelineStream, int batchSize) {
+    public UnsideliningSpout(String topologyName, Provider<StormSideliner> sidelineProvider, MultiScheme scheme, String unsidelineStream, int batchSize) {
         this.topologyName = topologyName;
         this.sidelineProvider = sidelineProvider;
         this.scheme = scheme;
@@ -63,7 +61,7 @@ public class UnsideliningSpout extends BaseRichSpout {
         this._collector = collector;
         this.config = config;
 
-        sideliner = sidelineProvider.get();
+        stormSideliner = sidelineProvider.get();
 
         int totalPartions = 512;
         int taskId = context.getThisTaskId();
@@ -166,11 +164,13 @@ public class UnsideliningSpout extends BaseRichSpout {
                 groupedEvents.eventQueue.remove();
                 if (!groupedEvents.eventQueue.isEmpty()) {
                     log.info("Adding this group to emitQueue {}", groupedEvents.rowKey);
-                    sideliner.deleteEvent(stormMsgId.rowKey, stormMsgId.messageId);
+                    stormSideliner.deleteEvent(stormMsgId.rowKey, stormMsgId.messageId);
                     toEmitEvents.add(groupedEvents);
                 } else {
                     log.info("Deleting this group as no events in group {}", groupedEvents.rowKey);
-                    sideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version);
+                    if(stormSideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version)) {
+                        stormSideliner.finishUnsidelining(groupedEvents.rowKey);
+                    }
                 }
                 inProcessEvents.remove(groupedEvents.rowKey);
             }
@@ -216,21 +216,9 @@ public class UnsideliningSpout extends BaseRichSpout {
         }
     }
 
-    private class GroupedEvents {
-        String rowKey;
-        Queue<Event> eventQueue = Lists.newLinkedList();
-        long version;
-    }
 
-    private class Event {
-        String id;
-        byte[] value;
 
-        private Event(String id, byte[] value) {
-            this.id = id;
-            this.value = value;
-        }
-    }
+
 
     private class HbasePartitionManager {
 
@@ -247,13 +235,15 @@ public class UnsideliningSpout extends BaseRichSpout {
         private PartitionState fillEmitQueue() {
             try {
 
-                ArrayList<Result> resultList = sideliner.scan(firstRow, partition + "-" + topologyName, batchSize);
+                List<String> rows = stormSideliner.getUnsidelinedRows(firstRow, partition + "-" + topologyName, batchSize);
 
-                List<GroupedEvents> toEmitGroups = transform(resultList);
+                List<GroupedEvents> toEmitGroups = stormSideliner.getGroupedEvents(rows);
+
+
                 toEmitEvents.addAll(toEmitGroups);
 
-                if (resultList.size() == batchSize) {
-                    firstRow = Bytes.toString(resultList.get(resultList.size() - 1).getRow());
+                if (toEmitGroups.size() == batchSize) {
+                    firstRow = toEmitGroups.get(toEmitGroups.size() - 1).rowKey;
                     return PartitionState.SCAN_PENDING;
                 } else {
                     firstRow = TOPOLOGY_PREFIX;
@@ -264,27 +254,6 @@ public class UnsideliningSpout extends BaseRichSpout {
             }
         }
 
-        private List<GroupedEvents> transform(ArrayList<Result> resultList) {
-
-
-            List<GroupedEvents> toEmitGroups = Lists.newLinkedList();
-            for (Result result : resultList) {
-                log.info("Transforming result for {}",result.getRow());
-                List<KeyValue> list = result.list();
-                list.sort((o1, o2) -> (int) (o1.getTimestamp() - o2.getTimestamp()));
-                GroupedEvents groupedEvents = new GroupedEvents();
-                groupedEvents.rowKey = Bytes.toString(result.getRow());
-                for (KeyValue kv : list) {
-                    if (Bytes.toString(kv.getQualifier()).equals(HBaseTableConfig.VERSION)) {
-                        groupedEvents.version = Bytes.toLong(kv.getValue());
-                    } else {
-                        groupedEvents.eventQueue.add(new Event(Bytes.toString(kv.getQualifier()), kv.getValue()));
-                    }
-                }
-                toEmitGroups.add(groupedEvents);
-            }
-            return toEmitGroups;
-        }
 
     }
 

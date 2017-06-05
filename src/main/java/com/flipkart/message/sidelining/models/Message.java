@@ -1,10 +1,12 @@
 package com.flipkart.message.sidelining.models;
 
 
-import com.flipkart.message.sidelining.dao.HBaseDAO;
+import com.flipkart.message.sidelining.dao.HbaseDataStore;
+
+import java.util.Arrays;
 
 /**
- * Created by saurabh.jha on 15/09/16.
+ * Created by gupta.rajat on 05/06/17.
  */
 
 public class Message {
@@ -45,7 +47,15 @@ public class Message {
         this.data = data;
     }
 
-    public String getRowKey() { return HBaseDAO.getRowKey(topic,groupId);}
+    public String getRowKey() { return HbaseDataStore.getRowKey(topic,groupId);}
 
-
+    @Override
+    public String toString() {
+        return "Message{" +
+                "id='" + id + '\'' +
+                ", groupId='" + groupId + '\'' +
+                ", topic='" + topic + '\'' +
+                ", data=" + Arrays.toString(data) +
+                '}';
+    }
 }

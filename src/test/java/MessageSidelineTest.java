@@ -1,26 +1,20 @@
 import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.configs.HBaseClientConfig;
-import com.flipkart.message.sidelining.configs.HBaseTableConfig;
 
 import com.flipkart.message.sidelining.factories.SidelineFactory;
 
-import com.flipkart.message.sidelining.service.SidelineService;
+import com.flipkart.message.sidelining.service.StormSideliner;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTablePool;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
-import static com.flipkart.message.sidelining.configs.HBaseTableConfig.CF;
+import static com.flipkart.message.sidelining.dao.HbaseDataStore.CF;
 
 /**
  * Created by saurabh.jha on 21/09/16.
@@ -30,14 +24,15 @@ public class MessageSidelineTest {
 
     //table name
     public static final String TABLE_NAME = "oms.messages";
+    public static final String UNSIDELINE_TABLE = "unsideline";
     private static Configuration configuration;
-    private static SidelineService service;
+    private static StormSideliner service;
 
     @BeforeClass
     public static void initialize() throws HBaseClientException {
         configuration = HBaseConfiguration.create();
         HTablePool tablePool = new HTablePool(configuration, HBaseClientConfig.poolSize);
-        service = SidelineFactory.getService(tablePool, TABLE_NAME);
+        service = SidelineFactory.getService(tablePool, TABLE_NAME,UNSIDELINE_TABLE);
         createTable();
     }
 

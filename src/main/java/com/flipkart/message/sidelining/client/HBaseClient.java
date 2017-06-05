@@ -8,10 +8,7 @@ import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.*;
-import org.apache.hadoop.hbase.filter.Filter;
-import org.apache.hadoop.hbase.filter.FilterList;
-import org.apache.hadoop.hbase.filter.PageFilter;
-import org.apache.hadoop.hbase.filter.PrefixFilter;
+import org.apache.hadoop.hbase.filter.*;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
@@ -117,18 +114,29 @@ public class HBaseClient {
         }
     }
 
-    public Result[] getRows(String tableName, List<String> rows, String cf) throws HBaseClientException {
+    //API
+    public Result getRow(String tableName, String row) throws HBaseClientException {
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Get get = new Get(Bytes.toBytes(row));
+            Result result = table.get(get);
+            return result;
+        } catch (IOException e) {
+            String msg = "While reading [" + row + "]";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    public List<Result> getRows(String tableName, List<String> rows) throws HBaseClientException {
         try ( HTableInterface table = tablePool.getTable(tableName)) {
             List<Get> gets = new ArrayList<>();
             for (String row : rows) {
                 Get get = new Get(Bytes.toBytes(row));
-                get.addFamily(Bytes.toBytes(cf));
                 gets.add(get);
             }
             Result[] results = table.get(gets);
-            return results;
+            return Lists.newArrayList(results);
         } catch (IOException e) {
-            String msg = "While reading [" + rows.toString() + ": " + cf +"]";
+            String msg = "While reading [" + rows.toString() +"]";
             throw new HBaseClientException(msg, e);
         }
     }
@@ -145,16 +153,7 @@ public class HBaseClient {
         }
     }
 
-    public Result getRow(String tableName, String row) throws HBaseClientException {
-        try ( HTableInterface table = tablePool.getTable(tableName)) {
-            Get get = new Get(Bytes.toBytes(row));
-            Result result = table.get(get);
-            return result;
-        } catch (IOException e) {
-            String msg = "While reading [" + row + "]";
-            throw new HBaseClientException(msg, e);
-        }
-    }
+
 
     //TODO Improve the interface
     public Result[] scan(String tableName, String row, String stopRow, Filter filter, String cf) throws HBaseClientException {
@@ -181,6 +180,49 @@ public class HBaseClient {
             String msg = "While reading [" + row + ": " + cf +"]";
             throw new HBaseClientException(msg, e);
         }
+    }
+
+    //API
+    public int getCount(String tableName) throws HBaseClientException {
+        int count = 0;
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan();
+            scan.setFilter(new KeyOnlyFilter());
+            ResultScanner scanner = table.getScanner(scan);
+
+            for (Result rs = scanner.next(); rs != null; rs = scanner.next()) {
+                count++;
+            }
+        } catch (IOException e) {
+            String msg = "While reading [" + tableName + "]";
+            throw new HBaseClientException(msg, e);
+        }
+        return count;
+    }
+
+    //API
+    public int getCount(String tableName, String prefix) throws HBaseClientException {
+        int count = 0;
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan();
+
+            PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
+            KeyOnlyFilter keyOnlyFilter = new KeyOnlyFilter();
+            FilterList filterList = new FilterList();
+            filterList.addFilter(prefixFilter);
+            filterList.addFilter(keyOnlyFilter);
+            scan.setFilter(filterList);
+
+            ResultScanner scanner = table.getScanner(scan);
+
+            for (Result rs = scanner.next(); rs != null; rs = scanner.next()) {
+                count++;
+            }
+        } catch (IOException e) {
+            String msg = "While reading [" + tableName + "]";
+            throw new HBaseClientException(msg, e);
+        }
+        return count;
     }
 
     public List<Result> scanRows(String tableName, String row, String stopRow, String cf, List<String> qualifiers) throws HBaseClientException {
@@ -223,6 +265,31 @@ public class HBaseClient {
             String msg = "While searching for prefix " + prefix;
             throw new HBaseClientException(msg, e);
         }
+
+    }
+
+    //API
+    public List<String> scanRowsOnly(String tableName, String prefix, int batch) throws HBaseClientException {
+            try ( HTableInterface table = tablePool.getTable(tableName)) {
+                Scan scan = new Scan();
+                PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
+                KeyOnlyFilter keyOnlyFilter = new KeyOnlyFilter();
+                PageFilter pageFilter = new PageFilter(batch);
+                FilterList filterList = new FilterList();
+                filterList.addFilter(prefixFilter);
+                filterList.addFilter(pageFilter);
+                filterList.addFilter(keyOnlyFilter);
+                scan.setFilter(filterList);
+                ResultScanner resultScanner = table.getScanner(scan);
+                List<String> rows = Lists.newArrayList();
+                for(Result r : resultScanner) {
+                    rows.add(Bytes.toString(r.getRow()));
+                }
+                return rows;
+            } catch (IOException e) {
+                String msg = "While searching for prefix " + prefix;
+                throw new HBaseClientException(msg, e);
+            }
 
     }
 
