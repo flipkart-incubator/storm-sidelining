@@ -27,7 +27,7 @@ import java.util.*;
 public class UnsideliningSpout extends BaseRichSpout {
     private static final Logger log = LoggerFactory.getLogger(UnsideliningSpout.class);
 
-    private static String UNSIDELINE_STREAM = "UNSIDELINE-STREAM";
+    private String unsidelineStream;
 
     private String topologyName;
 
@@ -51,7 +51,7 @@ public class UnsideliningSpout extends BaseRichSpout {
         this.sidelineProvider = sidelineProvider;
         this.scheme = scheme;
         this.batchSize = batchSize;
-        UNSIDELINE_STREAM = unsidelineStream;
+        this.unsidelineStream = unsidelineStream;
     }
 
     /*
@@ -77,6 +77,9 @@ public class UnsideliningSpout extends BaseRichSpout {
                 partitionManagers.add(new HbasePartitionManager(partition));
             }
         }
+        log.info("UnSpout details" + context.toJSONString());
+        log.info("Topology streams " + context.getThisStreams().toString());
+        log.info("UnSpout targets" + context.getThisTargets().toString());
     }
 
     /*
@@ -110,8 +113,8 @@ public class UnsideliningSpout extends BaseRichSpout {
                 List<Object> tuple = generateTuple(event.value);
                 StormMsgId stormMsgId = new StormMsgId(groupedEvents.rowKey, event.id);
 
-                log.info("Emitting tuple rowKey {}, id {}", stormMsgId.rowKey, stormMsgId.messageId);
-                _collector.emit(UNSIDELINE_STREAM, tuple, stormMsgId);
+                log.info("Emitting tuple rowKey {}, id {} to stream {}", stormMsgId.rowKey, stormMsgId.messageId, unsidelineStream);
+                _collector.emit(unsidelineStream, tuple, stormMsgId);
 
                 inProcessEvents.put(groupedEvents.rowKey, groupedEvents);
             }
@@ -140,7 +143,7 @@ public class UnsideliningSpout extends BaseRichSpout {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-        declarer.declareStream(UNSIDELINE_STREAM, scheme.getOutputFields());
+        declarer.declareStream(unsidelineStream, scheme.getOutputFields());
     }
 
     /**
