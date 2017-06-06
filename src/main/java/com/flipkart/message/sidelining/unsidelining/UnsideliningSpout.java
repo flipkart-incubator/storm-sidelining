@@ -5,10 +5,12 @@ import backtype.storm.spout.SpoutOutputCollector;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichSpout;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flipkart.message.sidelining.models.Event;
 import com.flipkart.message.sidelining.models.GroupedEvents;
 import com.flipkart.message.sidelining.service.StormSideliner;
+import com.flipkart.message.sidelining.utils.SerdeUtils;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.inject.Provider;
@@ -122,12 +124,11 @@ public class UnsideliningSpout extends BaseRichSpout {
     }
 
     /**
-     * //TODO Use same serializer and deserializer.
      * //Maintains ordering
      */
     private List<Object> generateTuple(byte[] value) {
         try {
-            LinkedHashMap<String, Object> result = new ObjectMapper().readValue(value, LinkedHashMap.class);
+            Map<String,Object> result = SerdeUtils.deserialize(value, new TypeReference<Map<String, Object>>() {});
             List<Object> ret = new ArrayList<>(result.size());
             for (String s : scheme.getOutputFields()) {
                 ret.add(result.get(s));
@@ -185,7 +186,7 @@ public class UnsideliningSpout extends BaseRichSpout {
     }
 
     private void sanityCheck() {
-        if (inProcessEvents.size() > 10000) {
+        if (inProcessEvents.size() > 100) {
             log.error("Events not getting ack or fail");
             inProcessEvents.clear();
         }
@@ -216,10 +217,6 @@ public class UnsideliningSpout extends BaseRichSpout {
         }
     }
 
-
-
-
-
     private class HbasePartitionManager {
 
         int partition;
@@ -239,7 +236,6 @@ public class UnsideliningSpout extends BaseRichSpout {
 
                 List<GroupedEvents> toEmitGroups = stormSideliner.getGroupedEvents(rows);
 
-
                 toEmitEvents.addAll(toEmitGroups);
 
                 if (toEmitGroups.size() == batchSize) {
@@ -253,7 +249,6 @@ public class UnsideliningSpout extends BaseRichSpout {
                 throw new RuntimeException("Hbase unsideline scan failed", e);
             }
         }
-
 
     }
 

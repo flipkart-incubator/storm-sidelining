@@ -1,10 +1,12 @@
 package com.flipkart.message.sidelining.service;
 
+import backtype.storm.tuple.Tuple;
 import com.flipkart.message.sidelining.client.HBaseClient;
 import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.dao.HbaseDataStore;
 import com.flipkart.message.sidelining.models.GroupedEvents;
 import com.flipkart.message.sidelining.models.Message;
+import com.flipkart.message.sidelining.utils.SerdeUtils;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.hbase.client.HTablePool;
@@ -48,15 +50,17 @@ public class StormSideliner {
     }
 
 
-    public boolean groupSideline(String topic, String groupId, String id, byte[] data) throws Exception {
-        log.info("sidelining data in batch for topic {} and groupId {}", topic, groupId);
+    public boolean groupSideline(String topic, String groupId, String id, Tuple tuple) throws Exception {
+
         try {
+            byte[] data = SerdeUtils.serialize(tuple);
             int retryCount = 0;
             while (retryCount <= 10) {
                 long version = hbaseDataStore.getVersion(topic, groupId);
                 if (version == 0L) {
                     return false;
                 } else {
+                    log.info("sidelining data in batch for topic {}, groupId {} , id {} , data {}", topic, groupId, id, Bytes.toString(data));
                     Message message = new Message();
                     message.setGroupId(groupId);
                     message.setTopic(topic);
