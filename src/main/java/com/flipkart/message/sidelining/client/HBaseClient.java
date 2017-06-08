@@ -269,28 +269,55 @@ public class HBaseClient {
     }
 
     //API
-    public List<String> scanRowsOnly(String tableName, String prefix, int batch) throws HBaseClientException {
-            try ( HTableInterface table = tablePool.getTable(tableName)) {
-                Scan scan = new Scan();
-                PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(prefix));
-                KeyOnlyFilter keyOnlyFilter = new KeyOnlyFilter();
-                PageFilter pageFilter = new PageFilter(batch);
-                FilterList filterList = new FilterList();
-                filterList.addFilter(prefixFilter);
-                filterList.addFilter(pageFilter);
-                filterList.addFilter(keyOnlyFilter);
-                scan.setFilter(filterList);
-                ResultScanner resultScanner = table.getScanner(scan);
-                List<String> rows = Lists.newArrayList();
-                for(Result r : resultScanner) {
-                    rows.add(Bytes.toString(r.getRow()));
-                }
-                return rows;
-            } catch (IOException e) {
-                String msg = "While searching for prefix " + prefix;
-                throw new HBaseClientException(msg, e);
+    public List<String> scanRowKeyOnly(String tableName, int batch) throws HBaseClientException {
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan();
+            KeyOnlyFilter keyOnlyFilter = new KeyOnlyFilter();
+            PageFilter pageFilter = new PageFilter(batch);
+            FilterList filterList = new FilterList();
+            filterList.addFilter(pageFilter);
+            filterList.addFilter(keyOnlyFilter);
+            scan.setFilter(filterList);
+            ResultScanner resultScanner = table.getScanner(scan);
+            List<String> rows = Lists.newArrayList();
+            for (Result r : resultScanner) {
+                rows.add(Bytes.toString(r.getRow()));
+            }
+            return rows;
+        } catch (IOException e) {
+            String msg = "Error scanning";
+            throw new HBaseClientException(msg, e);
+        }
+    }
+
+    //API
+    public List<String> scanRowKeyOnly(String tableName, String prefix, int batch) throws HBaseClientException {
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Scan scan = new Scan();
+            KeyOnlyFilter keyOnlyFilter = new KeyOnlyFilter();
+            PageFilter pageFilter = new PageFilter(batch);
+
+            FilterList partitionPrefixFilters = new FilterList(FilterList.Operator.MUST_PASS_ONE);
+            for (int i = 0; i <= 512; i++) {
+                PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(i + "-" + prefix));
+                partitionPrefixFilters.addFilter(prefixFilter);
             }
 
+            FilterList filterList = new FilterList();
+            filterList.addFilter(partitionPrefixFilters);
+            filterList.addFilter(pageFilter);
+            filterList.addFilter(keyOnlyFilter);
+            scan.setFilter(filterList);
+            ResultScanner resultScanner = table.getScanner(scan);
+            List<String> rows = Lists.newArrayList();
+            for (Result r : resultScanner) {
+                rows.add(Bytes.toString(r.getRow()));
+            }
+            return rows;
+        } catch (IOException e) {
+            String msg = "Error while searching for prefix " + prefix;
+            throw new HBaseClientException(msg, e);
+        }
     }
 
 
@@ -331,15 +358,15 @@ public class HBaseClient {
     }
 
     public void checkAndClearRow(String tableName, String row,String cf,String column,long version) throws HBaseClientException {
-            try ( HTableInterface table = tablePool.getTable(tableName)) {
-                Delete delete = new Delete(Bytes.toBytes(row));
-                table.checkAndDelete( row.getBytes(), cf.getBytes() , column.getBytes(),
-                      Bytes.toBytes(version),delete);
-            } catch (IOException e) {
-                String msg = "While deleting [" + row + "]";
-                throw new HBaseClientException(msg, e);
-            }
+        try (HTableInterface table = tablePool.getTable(tableName)) {
+            Delete delete = new Delete(Bytes.toBytes(row));
+            table.checkAndDelete(row.getBytes(), cf.getBytes(), column.getBytes(),
+                    Bytes.toBytes(version), delete);
+        } catch (IOException e) {
+            String msg = "While deleting [" + row + "]";
+            throw new HBaseClientException(msg, e);
         }
+    }
 
     public void createTable(HTableDescriptor descriptor) throws HBaseClientException {
         try (HBaseAdmin admin = new HBaseAdmin(config)) {

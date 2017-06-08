@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.stream.Collectors;
 
 /**
  * Created by gupta.rajat on 05/06/17.
@@ -57,19 +58,35 @@ public class HbaseDataStore {
          return transform(client.getRows(sidelineTable, rowKeys));
     }
 
+    //API
+    public void unsidelineAll(int batch) throws HBaseClientException {
+        List<String> sidelinedRowKeys = getSidelinedRowKeys(batch);
+        for(String sidelinedRowKey : sidelinedRowKeys) {
+            unsideline(sidelinedRowKey);
+        }
+    }
+
+    //API
     public void unsideline(String rowKey) throws HBaseClientException {
-        client.putColumn(unsidelineTable, rowKey, CF, STATE, "UNPROCESSED".getBytes());
+        if(!client.getRow(sidelineTable,rowKey).isEmpty()) {
+            client.putColumn(unsidelineTable, rowKey, CF, STATE, "UNPROCESSED".getBytes());
+        }
     }
 
-    public Map<String, String> getInfo(String topic, String groupId) throws HBaseClientException {
-        return getInfo(getRowKey(topic, groupId));
+    //API
+    public Map<String, String> getAllEvents(String topic, String groupId) throws HBaseClientException {
+        return getAllEvents(getRowKey(topic, groupId));
     }
 
-    public Map<String, String> getInfo(String rowKey) throws HBaseClientException {
+    //API
+    public Map<String, String> getAllEvents(String rowKey) throws HBaseClientException {
 
         Map<String, String> events = Maps.newHashMap();
         Result result = client.getRow(sidelineTable, rowKey);
         NavigableMap<byte[], byte[]> familyMap = result.getFamilyMap(CF.getBytes());
+        if(familyMap == null) {
+            return null;
+        }
 
         for (Map.Entry<byte[], byte[]> entry : familyMap.entrySet()) {
             events.put(Bytes.toString(entry.getKey()), Bytes.toString(entry.getValue()));
@@ -77,16 +94,24 @@ public class HbaseDataStore {
         return events;
     }
 
+    //API
     public byte[] getEvent(String topic, String groupId, String eventId) throws HBaseClientException {
         return getEvent(getRowKey(topic, groupId),eventId);
     }
 
+    //API
     public byte[] getEvent(String rowKey, String eventId) throws HBaseClientException {
         return client.getColumnForRow(sidelineTable, rowKey, CF, eventId);
     }
 
-    public List<String> getSidelinedRows(String topology, int batch) throws HBaseClientException {
-        return client.scanRowsOnly(sidelineTable,topology,batch);
+    //API
+    public List<String> getSidelinedRowKeys(int batch) throws HBaseClientException {
+        return client.scanRowKeyOnly(sidelineTable,batch);
+    }
+
+    //API
+    public List<String> getSidelinedRowKeys(String topology, int batch) throws HBaseClientException {
+        return client.scanRowKeyOnly(sidelineTable,topology,batch);
     }
 
     public void deleteRow(String topic, String groupId) throws HBaseClientException {
@@ -120,8 +145,9 @@ public class HbaseDataStore {
         return client.scanPrefix(sidelineTable, firstRow, prefix, batch);
     }
 
-    public ArrayList<Result> getUnsidelinedRows(String firstRow, String prefix, int batch) throws HBaseClientException {
-        return client.scanPrefix(unsidelineTable, firstRow, prefix, batch);
+    public List<String> getUnsidelinedRows(String firstRow, String prefix, int batch) throws HBaseClientException {
+        List<Result> results =  client.scanPrefix(unsidelineTable, firstRow, prefix, batch);
+        return results.stream().map(result -> Bytes.toString(result.getRow())).collect(Collectors.toList());
     }
 
     //API

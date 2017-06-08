@@ -8,14 +8,16 @@ import com.flipkart.message.sidelining.models.GroupedEvents;
 import com.flipkart.message.sidelining.models.Message;
 import com.flipkart.message.sidelining.utils.SerdeUtils;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import org.apache.hadoop.hbase.client.HTablePool;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 
@@ -35,7 +37,7 @@ public class StormSideliner {
     }
 
     public boolean sideline(String topic, String groupId, String id, byte[] data){
-        log.info("sidelining data {} for topic {} and groupId {}", data, topic, groupId);
+        log.info("sidelining data {} for topic {} and groupId {}", Bytes.toString(data), topic, groupId);
         try {
             Message message = new Message();
             message.setGroupId(groupId);
@@ -82,46 +84,6 @@ public class StormSideliner {
 
     public List<GroupedEvents> getGroupedEvents(List<String> rows) throws HBaseClientException {
         return hbaseDataStore.getGroupedEvents(rows);
-    }
-
-    //API
-    public List<String> getSidelinedRows( String topology, int batch) throws HBaseClientException {
-        return hbaseDataStore.getSidelinedRows( topology, batch);
-    }
-
-    //API
-    public Map<String, String> getInfo(String topic, String groupId, String eventId) throws HBaseClientException {
-        log.info("fetching data for topic {}, groupId {} and eventId {}", topic, groupId, eventId);
-        Map<String, String> map = new HashMap<>();
-        byte[] result = hbaseDataStore.getEvent(topic, groupId, eventId);
-        map.put(eventId, Bytes.toString(result));
-        map.put("rowKey", HbaseDataStore.getRowKey(topic, groupId));
-        return map;
-    }
-
-    //API
-    public Map<String, String> getInfo(String rowKey, String eventId) throws HBaseClientException {
-        log.info("fetching data for rowKey {}, eventId {} ", rowKey, eventId);
-        Map<String, String> map = new HashMap<>();
-        byte[] result = hbaseDataStore.getEvent(rowKey, eventId);
-        map.put(eventId, Bytes.toString(result));
-        map.put("rowKey", rowKey);
-        return map;
-    }
-
-    //API
-    public Map<String, String> getInfo(String rowKey) throws HBaseClientException {
-        return hbaseDataStore.getInfo(rowKey);
-    }
-
-    //API
-    public Map getInfo(List<String> topics) throws HBaseClientException {
-        Map<String, Object> info = Maps.newHashMap();
-        info.put("count", hbaseDataStore.getTotalCount());
-        for (String topic : topics) {
-            info.put(topic, hbaseDataStore.getTopicCount(topic));
-        }
-        return info;
     }
 
     public boolean deleteRow(String topic, String groupId){
@@ -185,17 +147,7 @@ public class StormSideliner {
     }
 
     public List<String> getUnsidelinedRows(String firstRow, String topology, int batch) throws HBaseClientException {
-        List<Result> resultList = hbaseDataStore.getUnsidelinedRows(firstRow, topology, batch);
-        return resultList.stream().map(result -> Bytes.toString(result.getRow())).collect(Collectors.toList());
-    }
-
-    //API
-    public void unsideline(String rowKey) {
-        try {
-            hbaseDataStore.unsideline(rowKey);
-        } catch(HBaseClientException e){
-            log.error("Error Unsidelining {}", rowKey,e);
-        }
+        return hbaseDataStore.getUnsidelinedRows(firstRow, topology, batch);
     }
 
     public void finishUnsidelining(String rowKey) {
@@ -205,6 +157,61 @@ public class StormSideliner {
             log.error("Error deleting rowKey {}", rowKey, e);
         }
     }
+
+    //API
+    public void unsidelineAll(int batch) throws HBaseClientException {
+        hbaseDataStore.unsidelineAll(batch);
+    }
+
+    //API
+    public void unsidelineGroup(String rowKey) throws HBaseClientException{
+        hbaseDataStore.unsideline(rowKey);
+    }
+
+    //API
+    public List<String> getSidelinedRowKeys(int batch) throws HBaseClientException {
+        return hbaseDataStore.getSidelinedRowKeys(batch);
+    }
+
+    //API
+    public List<String> getSidelinedRowKeys(String topology, int batch) throws HBaseClientException {
+        return hbaseDataStore.getSidelinedRowKeys(topology, batch);
+    }
+
+    //API
+    public Map<String, String> getAllEvents(String rowKey) throws HBaseClientException {
+        return hbaseDataStore.getAllEvents(rowKey);
+    }
+
+    //API
+    public Map<String, String> getEvent(String rowKey, String eventId) throws HBaseClientException {
+        log.info("fetching data for rowKey {}, eventId {} ", rowKey, eventId);
+        Map<String, String> map = new HashMap<>();
+        byte[] result = hbaseDataStore.getEvent(rowKey, eventId);
+        map.put(eventId, Bytes.toString(result));
+        map.put("rowKey", rowKey);
+        return map;
+    }
+
+    //API
+    public Map<String, String> getEvent(String topic, String groupId, String eventId) throws HBaseClientException {
+        log.info("fetching data for topic {}, groupId {} and eventId {}", topic, groupId, eventId);
+        Map<String, String> map = new HashMap<>();
+        byte[] result = hbaseDataStore.getEvent(topic, groupId, eventId);
+        map.put(eventId, Bytes.toString(result));
+        map.put("rowKey", HbaseDataStore.getRowKey(topic, groupId));
+        return map;
+    }
+
+//    //API
+//    public Map getInfo(List<String> topics) throws HBaseClientException {
+//        Map<String, Object> info = Maps.newHashMap();
+//        info.put("count", hbaseDataStore.getTotalCount());
+//        for (String topic : topics) {
+//            info.put(topic, hbaseDataStore.getTopicCount(topic));
+//        }
+//        return info;
+//    }
 
     //API
     public boolean update(String topic, String groupId, String id, byte[] data){
@@ -223,6 +230,5 @@ public class StormSideliner {
             return false;
         }
     }
-
 
 }
