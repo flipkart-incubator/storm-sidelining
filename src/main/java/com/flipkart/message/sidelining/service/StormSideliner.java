@@ -1,6 +1,8 @@
 package com.flipkart.message.sidelining.service;
 
 import backtype.storm.tuple.Tuple;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.flipkart.message.sidelining.client.HBaseClient;
 import com.flipkart.message.sidelining.client.HBaseClientException;
 import com.flipkart.message.sidelining.dao.HbaseDataStore;
@@ -14,11 +16,13 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
+import static com.flipkart.message.sidelining.dao.HbaseDataStore.VERSION;
 
 
 /**
@@ -36,43 +40,34 @@ public class StormSideliner {
         hbaseDataStore = new HbaseDataStore(client,tableName, unsidelineTable);
     }
 
-    public boolean sideline(String topic, String groupId, String id, byte[] data){
-        log.info("sidelining data {} for topic {} and groupId {}", Bytes.toString(data), topic, groupId);
+    public boolean sideline(String topic, String groupId, String id, Tuple tuple){
+        log.info("sidelining data {} for topic {} and groupId {}", tuple.toString(), topic, groupId);
         try {
-            Message message = new Message();
-            message.setGroupId(groupId);
-            message.setTopic(topic);
-            message.setId(id);
-            message.setData(data);
+            byte[] data = SerdeUtils.serialize(tuple);
+            Message message = new Message(topic,groupId,id,data);
             return hbaseDataStore.insert(message);
         } catch (HBaseClientException e) {
-            log.error("error sidelining message {} exception {}", data, e);
+            log.error("error sidelining message {} ", tuple.toString(), e);
+            return false;
+        } catch (JsonProcessingException e) {
+            log.error("error sidelining message {} ", tuple.toString(), e);
             return false;
         }
     }
-
 
     public boolean groupSideline(String topic, String groupId, String id, Tuple tuple) throws Exception {
 
         try {
             byte[] data = SerdeUtils.serialize(tuple);
-            int retryCount = 0;
-            while (retryCount <= 10) {
-                long version = hbaseDataStore.getVersion(topic, groupId);
-                if (version == 0L) {
-                    return false;
-                } else {
-                    log.info("sidelining data in batch for topic {}, groupId {} , id {} , data {}", topic, groupId, id, Bytes.toString(data));
-                    Message message = new Message();
-                    message.setGroupId(groupId);
-                    message.setTopic(topic);
-                    message.setId(id);
-                    message.setData(data);
-                    if (hbaseDataStore.checkAndPut(message, version)) {
-                        return true;
-                    }
+            long version = hbaseDataStore.getVersion(topic, groupId);
+            if (version == 0L) {
+                return false;
+            } else {
+                log.info("sidelining data in batch for topic {}, groupId {} , id {} , data {}", topic, groupId, id, Bytes.toString(data));
+                Message message = new Message(topic, groupId, id, data);
+                if (hbaseDataStore.checkAndPut(message, version)) {
+                    return true;
                 }
-                retryCount++;
             }
             return false;
         } catch (HBaseClientException e) {
@@ -163,6 +158,12 @@ public class StormSideliner {
         hbaseDataStore.unsidelineAll(batch);
     }
 
+
+    //API
+    public void unsidelineTopic(String topic, int batch) throws HBaseClientException {
+        hbaseDataStore.unsidelineTopic(topic,batch);
+    }
+
     //API
     public void unsidelineGroup(String rowKey) throws HBaseClientException{
         hbaseDataStore.unsideline(rowKey);
@@ -216,11 +217,7 @@ public class StormSideliner {
     //API
     public boolean update(String topic, String groupId, String id, byte[] data){
 
-        Message message = new Message();
-        message.setGroupId(groupId);
-        message.setTopic(topic);
-        message.setId(id);
-        message.setData(data);
+        Message message = new Message(topic,groupId,id,data);
         try {
             log.info("updating {}", message);
             hbaseDataStore.update(message);
@@ -229,6 +226,19 @@ public class StormSideliner {
             log.error("error while updating {} ", message, e);
             return false;
         }
+    }
+
+
+    public boolean update(String topic, String groupId, String id, ModifyFunc modifier) throws HBaseClientException, IOException {
+        Map<String, String> allEvents = hbaseDataStore.getAllEvents(topic, groupId);
+        String event = allEvents.get(id);
+        String version = allEvents.get(VERSION);
+        Map<String, Object> tuple = SerdeUtils.deserialize(event, new TypeReference<Map<String, Object>>() {
+        });
+        tuple = modifier.modify(tuple);
+        byte[] data = SerdeUtils.serialize(tuple);
+        Message message = new Message(topic,groupId,id,data);
+        return hbaseDataStore.checkAndPut(message,Integer.parseInt(version));
     }
 
 }

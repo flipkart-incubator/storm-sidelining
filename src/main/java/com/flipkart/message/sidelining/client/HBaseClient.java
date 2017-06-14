@@ -298,7 +298,7 @@ public class HBaseClient {
             PageFilter pageFilter = new PageFilter(batch);
 
             FilterList partitionPrefixFilters = new FilterList(FilterList.Operator.MUST_PASS_ONE);
-            for (int i = 0; i <= 512; i++) {
+            for (int i = 0; i < 512; i++) {
                 PrefixFilter prefixFilter = new PrefixFilter(Bytes.toBytes(i + "-" + prefix));
                 partitionPrefixFilters.addFilter(prefixFilter);
             }

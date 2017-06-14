@@ -67,6 +67,14 @@ public class HbaseDataStore {
     }
 
     //API
+    public void unsidelineTopic(String topic, int batch) throws HBaseClientException {
+        List<String> sidelinedRowKeys = getSidelinedRowKeys(topic, batch);
+        for(String sidelinedRowKey : sidelinedRowKeys) {
+            unsideline(sidelinedRowKey);
+        }
+    }
+
+    //API
     public void unsideline(String rowKey) throws HBaseClientException {
         if(!client.getRow(sidelineTable,rowKey).isEmpty()) {
             client.putColumn(unsidelineTable, rowKey, CF, STATE, "UNPROCESSED".getBytes());

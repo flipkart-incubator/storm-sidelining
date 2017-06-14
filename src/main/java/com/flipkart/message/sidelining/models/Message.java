@@ -10,10 +10,17 @@ import java.util.Arrays;
  */
 
 public class Message {
-    private String id;
-    private String groupId;
     private String topic;
+    private String groupId;
+    private String id;
     private byte[] data;
+
+    public Message(String topic, String groupId, String id, byte[] data) {
+        this.topic = topic;
+        this.groupId = groupId;
+        this.id = id;
+        this.data = data;
+    }
 
     public String getId() {
         return id;
