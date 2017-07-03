@@ -191,17 +191,19 @@ public class HbaseDataStore {
         List<GroupedEvents> toEmitGroups = Lists.newLinkedList();
         for (Result result : resultList) {
             List<KeyValue> list = result.list();
-            list.sort((o1, o2) -> (int) (o1.getTimestamp() - o2.getTimestamp()));
-            GroupedEvents groupedEvents = new GroupedEvents();
-            groupedEvents.rowKey = Bytes.toString(result.getRow());
-            for (KeyValue kv : list) {
-                if (Bytes.toString(kv.getQualifier()).equals(VERSION)) {
-                    groupedEvents.version = Bytes.toLong(kv.getValue());
-                } else {
-                    groupedEvents.eventQueue.add(new Event(Bytes.toString(kv.getQualifier()), kv.getValue()));
+            if (list != null && list.size() != 0) {
+                list.sort((o1, o2) -> (int) (o1.getTimestamp() - o2.getTimestamp()));
+                GroupedEvents groupedEvents = new GroupedEvents();
+                groupedEvents.rowKey = Bytes.toString(result.getRow());
+                for (KeyValue kv : list) {
+                    if (Bytes.toString(kv.getQualifier()).equals(VERSION)) {
+                        groupedEvents.version = Bytes.toLong(kv.getValue());
+                    } else {
+                        groupedEvents.eventQueue.add(new Event(Bytes.toString(kv.getQualifier()), kv.getValue()));
+                    }
                 }
+                toEmitGroups.add(groupedEvents);
             }
-            toEmitGroups.add(groupedEvents);
         }
         return toEmitGroups;
     }
