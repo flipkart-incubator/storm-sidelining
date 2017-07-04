@@ -6,7 +6,7 @@ import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichSpout;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.flipkart.message.sidelining.configs.UnSideliningConfig;
 import com.flipkart.message.sidelining.models.Event;
 import com.flipkart.message.sidelining.models.GroupedEvents;
 import com.flipkart.message.sidelining.service.StormSideliner;
@@ -19,6 +19,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+
+import static com.flipkart.message.sidelining.configs.UnSideliningConfig.Mode.AUTOMATIC;
+import static com.flipkart.message.sidelining.configs.UnSideliningConfig.Mode.SEMI_AUTOMATIC;
 
 
 /**
@@ -37,21 +40,20 @@ public class UnsideliningSpout extends BaseRichSpout {
 
     private final Provider<StormSideliner> sidelineProvider;
     private StormSideliner stormSideliner;
-    private Map config;
     private MultiScheme scheme;
     private SpoutOutputCollector _collector;
 
     private Queue<GroupedEvents> toEmitEvents = Lists.newLinkedList();
     private Map<String, GroupedEvents> inProcessEvents = Maps.newLinkedHashMap();
 
-    private int batchSize = 10;
+    private UnSideliningConfig config;
 
-    public UnsideliningSpout(String topologyName, Provider<StormSideliner> sidelineProvider, MultiScheme scheme, String unsidelineStream, int batchSize) {
+    public UnsideliningSpout(String topologyName, Provider<StormSideliner> sidelineProvider, MultiScheme scheme, String unsidelineStream, UnSideliningConfig config) {
         this.topologyName = topologyName;
         this.sidelineProvider = sidelineProvider;
         this.scheme = scheme;
-        this.batchSize = batchSize;
         this.unsidelineStream = unsidelineStream;
+        this.config = config;
     }
 
     /*
@@ -59,19 +61,17 @@ public class UnsideliningSpout extends BaseRichSpout {
      * It provides the spout with the environment in which the spout executes.
      */
     @Override
-    public void open(Map config, TopologyContext context, SpoutOutputCollector collector) {
+    public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
         this._collector = collector;
-        this.config = config;
 
         stormSideliner = sidelineProvider.get();
 
-        int totalPartions = 512;
         int taskId = context.getThisTaskId();
         String componentId = context.getComponentId(taskId);
         int totalSpouts = context.getComponentTasks(componentId).size();
         int rem = taskId % totalSpouts;
 
-        for (int partition = 0; partition < totalPartions; partition++) {
+        for (int partition = 0; partition < config.partitions; partition++) {
             if (partition % totalSpouts == rem) {
                 log.info("Partition no. {} attached to taskId {}", partition, taskId);
                 partitionManagers.add(new HbasePartitionManager(partition));
@@ -169,9 +169,7 @@ public class UnsideliningSpout extends BaseRichSpout {
                     toEmitEvents.add(groupedEvents);
                 } else {
                     log.info("Deleting this group as no events in group {}", groupedEvents.rowKey);
-                    if(stormSideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version)) {
-                        stormSideliner.finishUnsidelining(groupedEvents.rowKey);
-                    }
+                    stormSideliner.checkAndDeleteRow(groupedEvents.rowKey, groupedEvents.version);
                 }
                 inProcessEvents.remove(groupedEvents.rowKey);
             }
@@ -232,13 +230,19 @@ public class UnsideliningSpout extends BaseRichSpout {
         private PartitionState fillEmitQueue() {
             try {
 
-                List<String> rows = stormSideliner.getUnsidelinedRows(firstRow, partition + "-" + topologyName, batchSize);
+                List<GroupedEvents> toEmitGroups = Lists.newArrayList();
 
-                List<GroupedEvents> toEmitGroups = stormSideliner.getGroupedEvents(rows);
+                if(config.mode == SEMI_AUTOMATIC) {
+                    List<String> rows = stormSideliner.getUnsidelinedRowKeys(firstRow, partition + "-" + topologyName, config.batch);
+                    stormSideliner.clearUnsidelinedKeys(rows);
+                    toEmitGroups =  stormSideliner.getGroupedEvents(rows);
+                } else if(config.mode == AUTOMATIC) {
+                     toEmitGroups = stormSideliner.getGroupedEvents(firstRow, partition + "-" + topologyName, config.batch);
+                }
 
                 toEmitEvents.addAll(toEmitGroups);
 
-                if (toEmitGroups.size() == batchSize) {
+                if (toEmitGroups.size() == config.batch) {
                     firstRow = toEmitGroups.get(toEmitGroups.size() - 1).rowKey;
                     return PartitionState.SCAN_PENDING;
                 } else {

@@ -81,6 +81,10 @@ public class StormSideliner {
         return hbaseDataStore.getGroupedEvents(rows);
     }
 
+    public List<GroupedEvents> getGroupedEvents(String firstRow, String topology, int batch) throws HBaseClientException {
+        return hbaseDataStore.getGroupedEvents(firstRow,topology,batch);
+    }
+
     public boolean deleteRow(String topic, String groupId){
         log.info("deleting data for topic {} and groupId {}", topic, groupId);
         try {
@@ -137,19 +141,16 @@ public class StormSideliner {
         }
     }
 
-    public ArrayList<Result> scan(String firstRow, String topology, int batch) throws HBaseClientException {
-        return hbaseDataStore.scan(firstRow, topology, batch);
+
+    public List<String> getUnsidelinedRowKeys(String firstRow, String topology, int batch) throws HBaseClientException {
+        return hbaseDataStore.getUnsidelinedRowKeys(firstRow, topology, batch);
     }
 
-    public List<String> getUnsidelinedRows(String firstRow, String topology, int batch) throws HBaseClientException {
-        return hbaseDataStore.getUnsidelinedRows(firstRow, topology, batch);
-    }
-
-    public void finishUnsidelining(String rowKey) {
+    public void clearUnsidelinedKeys(List<String> rowKeys) {
         try {
-            hbaseDataStore.deleteUnsidelineRow(rowKey);
+            hbaseDataStore.deleteUnsidelinedRows(rowKeys);
         } catch (HBaseClientException e) {
-            log.error("Error deleting rowKey {}", rowKey, e);
+            log.error("Error deleting rowKeys {}", rowKeys, e);
         }
     }
 

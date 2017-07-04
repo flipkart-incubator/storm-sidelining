@@ -58,6 +58,10 @@ public class HbaseDataStore {
          return transform(client.getRows(sidelineTable, rowKeys));
     }
 
+    public List<GroupedEvents> getGroupedEvents(String firstRow, String topology, int batch) throws HBaseClientException {
+        return transform(client.scanPrefix(sidelineTable,firstRow,topology,batch));
+    }
+
     //API
     public void unsidelineAll(int batch) throws HBaseClientException {
         List<String> sidelinedRowKeys = getSidelinedRowKeys(batch);
@@ -125,8 +129,10 @@ public class HbaseDataStore {
     public void deleteRow(String topic, String groupId) throws HBaseClientException {
         client.clearRow(sidelineTable, getRowKey(topic, groupId));
     }
-    public void deleteUnsidelineRow(String rowKey) throws HBaseClientException {
-        client.clearRow(unsidelineTable, rowKey);
+    public void deleteUnsidelinedRows(List<String> rowKeys) throws HBaseClientException {
+        for(String rowKey : rowKeys) {
+            client.clearRow(unsidelineTable, rowKey);
+        }
     }
 
     public void checkAndDeleteRow(String topic, String groupId, long version) throws HBaseClientException {
@@ -149,11 +155,11 @@ public class HbaseDataStore {
         client.updateColumn(sidelineTable, message.getRowKey(), CF, message.getId(), message.getData());
     }
 
-    public ArrayList<Result> scan(String firstRow, String prefix, int batch) throws HBaseClientException {
+    public ArrayList<Result> getSidelinedRows(String firstRow, String prefix, int batch) throws HBaseClientException {
         return client.scanPrefix(sidelineTable, firstRow, prefix, batch);
     }
 
-    public List<String> getUnsidelinedRows(String firstRow, String prefix, int batch) throws HBaseClientException {
+    public List<String> getUnsidelinedRowKeys(String firstRow, String prefix, int batch) throws HBaseClientException {
         List<Result> results =  client.scanPrefix(unsidelineTable, firstRow, prefix, batch);
         return results.stream().map(result -> Bytes.toString(result.getRow())).collect(Collectors.toList());
     }
