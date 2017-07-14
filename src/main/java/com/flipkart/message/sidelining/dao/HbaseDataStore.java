@@ -47,11 +47,17 @@ public class HbaseDataStore {
     }
 
     public boolean checkAndPut(Message message, long oldVersion) throws HBaseClientException {
-        long newVersion = oldVersion + 1;
+        byte[] checkVersionBytes = null;
+        long newVersion = oldVersion + 1L;
+        if(oldVersion == 0L) {
+            checkVersionBytes = null;
+        } else {
+            checkVersionBytes = Bytes.toBytes(oldVersion);
+        }
         Map<String, byte[]> cells = Maps.newHashMap();
         cells.put(message.getId(), message.getData());
         cells.put(VERSION, Bytes.toBytes(newVersion));
-        return client.checkAndPutColumns(sidelineTable, message.getRowKey(), CF, cells, VERSION, Bytes.toBytes(oldVersion));
+        return client.checkAndPutColumns(sidelineTable, message.getRowKey(), CF, cells, VERSION, checkVersionBytes);
     }
 
     public List<GroupedEvents> getGroupedEvents(List<String> rowKeys) throws HBaseClientException {
