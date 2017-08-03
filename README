@@ -1,0 +1,16 @@
+TODO :
+
+DONE 1. Serializer provided by client (Cant) Use same serialization/desrialization.
+DONE 2. Config driven auto/manual sidelining.
+DONE 3. Fix info (count) api. Takes long time to count. Remove get by topic as its not possible by partition.
+DONE 4. Checkandunsideline of unsideline api.
+DONE 5. Delete from unsidelineTable if not in sideline Table. Delete rowKey in sideline if no columns there. (Debug if happening)
+6. Check why sideline rowkeys are being formed with quotation mark around groupId.
+DONE 7. Add get top 100 rowkeys api.
+
+
+Refactoring : Separate out the modules for core and hbase. Add interfaces.
+ Separate interfaces for sidelining and unsidelining. Separate dependencies for sidelining and unsidelining.
+
+Test
+1. unsidelining manual.
