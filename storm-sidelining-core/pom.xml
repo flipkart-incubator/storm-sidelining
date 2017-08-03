@@ -7,10 +7,10 @@
     <parent>
         <groupId>com.flipkart.cp</groupId>
         <artifactId>storm-sidelining</artifactId>
-        <version>1.3.0-SNAPSHOT</version>
+        <version>1.3.0</version>
     </parent>
     <artifactId>storm-sidelining-core</artifactId>
-    <version>1.3.0-SNAPSHOT</version>
+    <version>1.3.0</version>
 
 
     <build>
